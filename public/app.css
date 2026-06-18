@@ -1,6 +1,6 @@
 :root {
-  --topbar-h: 64px;
-  --sidebar-w: 78px;
+  --topbar-h: 52px;
+  --sidebar-w: 64px;
   --panel: #ffffff;
   --panel-soft: #f8faff;
   --line: #e2e8f5;
@@ -341,7 +341,6 @@ body.app-fixed {
 #app-layout {
   display: flex;
   min-height: calc(100vh - var(--topbar-h));
-  padding-top: var(--topbar-h);
 }
 
 .app-sidebar {
