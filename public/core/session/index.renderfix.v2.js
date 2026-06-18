@@ -4,6 +4,8 @@ import { applyRcmWeeksConfig, resetRcmWeeks } from '../rcm/index.js';
 import { fetchReports } from '../../features/reporte/data/reporte.repository.js';
 import { getQuarterWeekNumber } from '../../features/reporte/models/reporte-state.js';
 
+const FEATURE_MODULE_VERSION = 'v=20260618-seguimiento-parity-2';
+
 const appState = {
   rootSelector: '#app-root',
   currentUser: null,
@@ -211,11 +213,11 @@ async function loadFeatureModules() {
     reporteModule,
     settingsRepositoryModule,
   ] = await Promise.all([
-    import('../../features/catalogos/index.js'),
-    import('../../features/configuracion/index.js'),
-    import('../../features/seguimiento/index.v2.js'),
-    import('../../features/reporte/index.js'),
-    import('../../features/configuracion/data/settings.repository.js'),
+    import(`../../features/catalogos/index.js?${FEATURE_MODULE_VERSION}`),
+    import(`../../features/configuracion/index.js?${FEATURE_MODULE_VERSION}`),
+    import(`../../features/seguimiento/index.v2.js?${FEATURE_MODULE_VERSION}`),
+    import(`../../features/reporte/index.js?${FEATURE_MODULE_VERSION}`),
+    import(`../../features/configuracion/data/settings.repository.js?${FEATURE_MODULE_VERSION}`),
   ]);
 
   return {

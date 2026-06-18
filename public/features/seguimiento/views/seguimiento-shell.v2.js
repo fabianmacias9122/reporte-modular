@@ -241,12 +241,20 @@ function renderWeekChips(card) {
 function renderSegTabs(state) {
   const tabs = Array.isArray(state.segTabs) ? state.segTabs : [];
   if (!tabs.length) return '';
+  const activeTab = tabs.find((tab) => tab.key === state.activeTab) || tabs[0];
   return `
     <div class="seg-view-mobile-switch">
-      <label class="seg-view-mobile-label" for="seg-view-mobile-select">Vista</label>
-      <select id="seg-view-mobile-select" class="seguimiento-filter-select seg-view-mobile-select" data-action="change-tab-select" aria-label="Seleccionar vista de seguimiento">
-        ${tabs.map((tab) => `<option value="${escapeHtml(tab.key)}"${tab.key === state.activeTab ? ' selected' : ''}>${escapeHtml(tab.label)}</option>`).join('')}
-      </select>
+      <label class="seg-view-mobile-label" for="seg-view-mobile-button">Vista</label>
+      <div class="seg-view-mobile-picker" id="seg-view-mobile-picker">
+        <button type="button" id="seg-view-mobile-button" class="seg-view-mobile-button" data-action="toggle-tab-menu" aria-haspopup="listbox" aria-expanded="false">
+          <span id="seg-view-mobile-button-text">${escapeHtml(activeTab?.label || '')}</span>
+        </button>
+        <div id="seg-view-mobile-menu" class="seg-view-mobile-menu" role="listbox" hidden>
+          ${tabs.map((tab) => `
+            <button type="button" class="seg-view-mobile-option${tab.key === state.activeTab ? ' is-active' : ''}" data-action="change-tab-menu" data-tab="${escapeHtml(tab.key)}" role="option" aria-selected="${tab.key === state.activeTab ? 'true' : 'false'}">${escapeHtml(tab.label)}</button>
+          `).join('')}
+        </div>
+      </div>
     </div>
     <div class="seg-view-tabs" id="seg-view-tab-bar">
       ${tabs.map((tab) => `
@@ -621,39 +629,39 @@ function renderMetasPanel(state) {
               <div class="friend-tracking-friends-grid friend-tracking-control-list${shouldGroupControlByCell ? ' is-grouped' : ''}">
                 ${renderControlContent()}
               </div>
-            </section>
+              </section>
+            </div>
+            <aside class="friend-tracking-side">
+              <details class="friend-tracking-card friend-tracking-card-goals friend-tracking-collapse friend-tracking-goals-band" open>
+                <summary class="friend-tracking-card-head friend-tracking-card-head-accent friend-tracking-card-head-green friend-tracking-collapse-head">
+                  <h3>Metas del cuatrimestre</h3>
+                </summary>
+                <div class="friend-tracking-goals-list">
+                  ${goalItems.map(({ label, goal, achieved }) => {
+                    const target = Number(goal) || 0;
+                    const done = Number(achieved) || 0;
+                    const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : (done > 0 ? 100 : 0);
+                    const remaining = Math.max(target - done, 0);
+                    const foot = remaining > 0 ? `Faltan ${remaining}` : 'Meta alcanzada ✓';
+                    return `
+                      <div class="friend-tracking-goal-row friend-tracking-goal-progress-row">
+                        <div class="friend-tracking-goal-topline">
+                          <span class="friend-tracking-goal-label">${escapeHtml(label)}</span>
+                          <strong class="friend-tracking-goal-value">${escapeHtml(String(done))}/${escapeHtml(String(target))}</strong>
+                        </div>
+                        <div class="friend-tracking-goal-bar" aria-hidden="true">
+                          <div class="friend-tracking-goal-fill" style="width:${pct}%"></div>
+                        </div>
+                        <span class="friend-tracking-goal-foot">${escapeHtml(foot)}</span>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </details>
+            </aside>
           </div>
-          <aside class="friend-tracking-side">
-            <details class="friend-tracking-card friend-tracking-card-goals friend-tracking-collapse friend-tracking-goals-band" open>
-              <summary class="friend-tracking-card-head friend-tracking-card-head-accent friend-tracking-card-head-green friend-tracking-collapse-head">
-                <h3>Metas del cuatrimestre</h3>
-              </summary>
-              <div class="friend-tracking-goals-list">
-                ${goalItems.map(({ label, goal, achieved }) => {
-                  const target = Number(goal) || 0;
-                  const done = Number(achieved) || 0;
-                  const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : (done > 0 ? 100 : 0);
-                  const remaining = Math.max(target - done, 0);
-                  const foot = remaining > 0 ? `Faltan ${remaining}` : 'Meta alcanzada ✓';
-                  return `
-                    <div class="friend-tracking-goal-row friend-tracking-goal-progress-row">
-                      <div class="friend-tracking-goal-topline">
-                        <span class="friend-tracking-goal-label">${escapeHtml(label)}</span>
-                        <strong class="friend-tracking-goal-value">${escapeHtml(String(done))}/${escapeHtml(String(target))}</strong>
-                      </div>
-                      <div class="friend-tracking-goal-bar" aria-hidden="true">
-                        <div class="friend-tracking-goal-fill" style="width:${pct}%"></div>
-                      </div>
-                      <span class="friend-tracking-goal-foot">${escapeHtml(foot)}</span>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            </details>
-          </aside>
-        </div>
+        </section>
         ${renderControlDetailDialog(scope, controlDetailEntry)}
-      </section>
       ` : ''}
     </div>
   `;
@@ -879,6 +887,7 @@ function renderDashboardPanel(state) {
       ],
     },
   ];
+  const dashboardSummaryView = getVisibleSummaryCards(summaryCards, Boolean(state.showAllDashboardSummaryCards));
   const renderAlertRow = (entry) => {
     const badges = (Array.isArray(entry?.events) ? entry.events : []).map((eventEntry) => `
       <span class="absence-event-pill absence-pill-${escapeHtml(String(eventEntry.letter || '').toLowerCase())}${eventEntry.justified ? ' is-justified' : ''}" title="${escapeHtml(eventEntry.streak >= 2 ? `${eventEntry.streak} semanas seguidas` : 'esta semana')}">${escapeHtml(String(eventEntry.letter || ''))}${eventEntry.streak >= 2 ? `<small>${escapeHtml(String(eventEntry.streak))}×</small>` : ''}</span>
@@ -910,7 +919,6 @@ function renderDashboardPanel(state) {
           </div>
           <span id="dashboard-scope-chip" class="panel-tag panel-tag-scope"${data?.scopeLabel ? '' : ' hidden'}>${escapeHtml(data?.scopeLabel || '')}</span>
         </div>
-        ${renderDashboardScopeTabs(state)}
         <div class="dashboard-time-tabs" id="dashboard-time-tabs">
           <button type="button" class="dashboard-time-tab${timeScope === 'week' ? ' is-active' : ''}" data-action="change-dashboard-time-scope" data-scope="week">Semana</button>
           <button type="button" class="dashboard-time-tab${timeScope === 'quarter' ? ' is-active' : ''}" data-action="change-dashboard-time-scope" data-scope="quarter">Cuatrimestre</button>
@@ -926,7 +934,7 @@ function renderDashboardPanel(state) {
           <span id="dashboard-week-chip" class="panel-tag"${data?.chip ? '' : ' hidden'}>${escapeHtml(data?.chip || '')}</span>
         </div>
         <div id="dashboard-summary-grid" class="summary-grid">
-          ${summaryCards.map((card) => `
+          ${dashboardSummaryView.visibleCards.map((card) => `
             <article class="summary-card summary-card-dashboard ${escapeHtml(card.accent || '')}">
               <span class="summary-label">${escapeHtml(card.label)}</span>
               <strong class="summary-value">${escapeHtml(String(card.value))}</strong>
@@ -934,6 +942,11 @@ function renderDashboardPanel(state) {
             </article>
           `).join('')}
         </div>
+        ${dashboardSummaryView.hiddenCount ? `
+          <div class="seg-summary-mobile-actions">
+            <button type="button" class="btn-ghost catalog-mobile-more" data-action="toggle-dashboard-summary-cards" aria-expanded="${state.showAllDashboardSummaryCards ? 'true' : 'false'}">${state.showAllDashboardSummaryCards ? 'Ver menos' : `Ver ${dashboardSummaryView.hiddenCount} más`}</button>
+          </div>
+        ` : ''}
       </section>
 
       <section class="panel panel-soft">
@@ -1192,30 +1205,33 @@ function renderSupervisorConsolidadoPanel(state) {
   ].filter(Boolean).join('');
 
   return `
-    <section class="panel panel-soft full-width seguimiento-next-shell">
-      <div class="panel-head">
-        <div>
-          <p class="eyebrow">Seguimiento</p>
-          <h2>Consolidado semanal</h2>
+    <div class="seguimiento-next-shell">
+      <section class="panel panel-soft full-width">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Seguimiento</p>
+            <h2>Consolidado semanal</h2>
+          </div>
+          <div class="sup-controls dashboard-period-controls">
+            <label class="sup-control dashboard-period-field">
+              <span>Supervisor</span>
+              <select data-action="change-supervisor" id="sup-supervisor-select">
+                ${data.supervisors.map((supervisor) => `<option value="${escapeHtml(supervisor.name)}"${supervisor.name === data.selectedSupervisorName ? ' selected' : ''}>${escapeHtml(supervisor.name)} · Sector ${escapeHtml(supervisor.sector)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="sup-control dashboard-period-field">
+              <span>Semana</span>
+              <select data-action="change-supervisor-week" id="sup-week-select">
+                ${data.weekOptions.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === data.selectedWeek ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+              </select>
+            </label>
+          </div>
         </div>
-        <div class="sup-controls dashboard-period-controls">
-          <label class="sup-control dashboard-period-field">
-            <span>Supervisor</span>
-            <select data-action="change-supervisor" id="sup-supervisor-select">
-              ${data.supervisors.map((supervisor) => `<option value="${escapeHtml(supervisor.name)}"${supervisor.name === data.selectedSupervisorName ? ' selected' : ''}>${escapeHtml(supervisor.name)} · Sector ${escapeHtml(supervisor.sector)}</option>`).join('')}
-            </select>
-          </label>
-          <label class="sup-control dashboard-period-field">
-            <span>Semana</span>
-            <select data-action="change-supervisor-week" id="sup-week-select">
-              ${data.weekOptions.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === data.selectedWeek ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-            </select>
-          </label>
-        </div>
-      </div>
-      ${state.message ? `<p class="fn-form-msg${state.isError ? ' is-error' : ''}">${escapeHtml(state.message)}</p>` : ''}
+        ${state.message ? `<p class="fn-form-msg${state.isError ? ' is-error' : ''}">${escapeHtml(state.message)}</p>` : ''}
+      </section>
       ${data.selectedSupervisor ? `
-        <div class="sup-capture" data-sup-sector="${escapeHtml(data.selectedSupervisor.sector)}" data-sup-week="${escapeHtml(data.selectedWeek)}">
+        <section class="panel panel-soft full-width">
+          <div class="sup-capture" data-sup-sector="${escapeHtml(data.selectedSupervisor.sector)}" data-sup-week="${escapeHtml(data.selectedWeek)}">
           <div class="sup-card-head">
             <div class="sup-card-meta">
               <span class="sup-meta-label">Supervisor:</span>
@@ -1284,9 +1300,10 @@ function renderSupervisorConsolidadoPanel(state) {
               </table>
             </div>
           ` : '<p class="empty-state" style="padding:16px 0">Este supervisor no tiene células asignadas.</p>'}
-        </div>
+          </div>
+        </section>
       ` : ''}
-    </section>
+    </div>
   `;
 }
 
