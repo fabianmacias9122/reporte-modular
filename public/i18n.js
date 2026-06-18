@@ -1,7 +1,9 @@
-import { currentLang as legacyCurrentLang, setLang as setLegacyLang, t as legacyT } from '/i18n.js';
-
 const LANG_STORAGE_KEY = 'rc-next.lang';
-let currentLang = legacyCurrentLang === 'en' ? 'en' : 'es';
+
+const TRANSLATIONS = {
+  es: {},
+  en: {},
+};
 
 function readStoredLanguage() {
   try {
@@ -17,11 +19,16 @@ function applyDocumentLanguage(lang) {
   document.documentElement.lang = lang;
 }
 
-currentLang = readStoredLanguage();
-applyDocumentLanguage(currentLang);
-if (currentLang !== legacyCurrentLang) {
-  setLegacyLang(currentLang);
+function interpolate(template, vars = {}) {
+  return String(template).replace(/\{(\w+)\}/g, (_, key) => {
+    const value = vars[key];
+    return value === undefined || value === null ? '' : String(value);
+  });
 }
+
+export let currentLang = readStoredLanguage();
+
+applyDocumentLanguage(currentLang);
 
 export function getCurrentLang() {
   return currentLang;
@@ -29,18 +36,29 @@ export function getCurrentLang() {
 
 export function setLang(lang) {
   currentLang = lang === 'en' ? 'en' : 'es';
-  if (currentLang !== legacyCurrentLang) {
-    setLegacyLang(currentLang);
-  }
   try {
     localStorage.setItem(LANG_STORAGE_KEY, currentLang);
   } catch {
     // ignore storage failures in local preview mode
   }
   applyDocumentLanguage(currentLang);
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('rc:langchange', { detail: { lang: currentLang } }));
+  }
   return currentLang;
 }
 
 export function t(key, vars = {}) {
-  return legacyT(key, vars);
+  const dict = TRANSLATIONS[currentLang] || TRANSLATIONS.es;
+  const template = dict[key] ?? TRANSLATIONS.es[key] ?? key;
+  return interpolate(template, vars);
+}
+
+export function applyStaticTranslations(root = document) {
+  if (!root?.querySelectorAll) return;
+  root.querySelectorAll('[data-i18n]').forEach((element) => {
+    const key = element.dataset.i18n;
+    if (!key) return;
+    element.textContent = t(key);
+  });
 }
