@@ -78,6 +78,14 @@ Para desplegar el backend desde este mismo repo:
 3. Agrega variables de entorno:
    - `TURSO_DATABASE_URL`
    - `TURSO_AUTH_TOKEN`
+  - `MASTER_PASSWORD_HASH` (opcional, pero requerido para login con master password)
+
+Para generar `MASTER_PASSWORD_HASH`:
+
+```bash
+cd api
+python -c "from server.app import _hash_password; print(_hash_password('TU_MASTER_PASSWORD'))"
+```
 
 Notas:
 

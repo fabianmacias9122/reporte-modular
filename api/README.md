@@ -13,10 +13,15 @@ Backend API aislado para Render Web Service.
 
 - `TURSO_DATABASE_URL`
 - `TURSO_AUTH_TOKEN`
+- `MASTER_PASSWORD_HASH` (opcional; necesario para login con master password)
+
+Generar hash del master password:
+
+```bash
+python -c "from server.app import _hash_password; print(_hash_password('TU_MASTER_PASSWORD'))"
+```
 
 ## Comandos Render
-
-- Build Command: `pip install -r requirements.txt`
 - Start Command: `gunicorn server.app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2`
 
 ## Endpoint de validacion
