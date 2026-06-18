@@ -13,6 +13,11 @@ Frontend paralelo para migrar el monolito de `public/app.js` sin afectar el sist
 ## Estructura
 
 ```text
+api/
+  server/
+  requirements.txt
+  Procfile
+  render.yaml
 public/
   app.js
   i18n.js
@@ -45,7 +50,14 @@ Un bloque no cuenta como modularizado hasta que desaparece del archivo original 
 
 ## Deploy En Render (Sin Afectar El Server Actual)
 
-Para desplegar este repo como un servicio nuevo e independiente:
+Este repo ahora vive como monorepo:
+
+1. `reporte-rcm`: frontend modular en `Static Site`
+2. `reporte-rcm-api`: backend API en `Web Service`
+
+### Frontend modular
+
+Para desplegar el frontend como un servicio nuevo e independiente:
 
 1. Crea un nuevo `Static Site` en Render con este repositorio.
 2. Configura:
@@ -53,6 +65,19 @@ Para desplegar este repo como un servicio nuevo e independiente:
   - `Publish Directory`: `public`
 3. Agrega variable de entorno en Render:
   - `REPORTE_API_BASE_URL`: URL del backend que quieres consumir (por ejemplo tu server de pruebas).
+
+### Backend API
+
+Para desplegar el backend desde este mismo repo:
+
+1. Crea un nuevo `Web Service` en Render con este repositorio.
+2. Configura:
+   - `Root Directory`: `api`
+   - `Build Command`: `pip install -r requirements.txt`
+   - `Start Command`: `gunicorn server.app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2`
+3. Agrega variables de entorno:
+   - `TURSO_DATABASE_URL`
+   - `TURSO_AUTH_TOKEN`
 
 Notas:
 
