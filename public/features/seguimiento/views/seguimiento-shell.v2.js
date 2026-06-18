@@ -256,6 +256,24 @@ function renderSegTabs(state) {
   `;
 }
 
+function getSummaryPreviewCount() {
+  if (typeof window === 'undefined') return 4;
+  const width = Number(window.innerWidth || 0);
+  if (width <= 520) return 2;
+  if (width <= 900) return 3;
+  if (width <= 1320) return 4;
+  return 5;
+}
+
+function getVisibleSummaryCards(cards, showAllCards) {
+  const safeCards = Array.isArray(cards) ? cards : [];
+  const previewCount = Math.max(1, getSummaryPreviewCount());
+  const previewCards = safeCards.slice(0, previewCount);
+  const visibleCards = showAllCards ? safeCards : previewCards;
+  const hiddenCount = Math.max(0, safeCards.length - previewCards.length);
+  return { visibleCards, hiddenCount };
+}
+
 function renderScopeTabs(state) {
   const tabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
   if (!tabs.length || state.activeTab !== 'goals') return '';
@@ -399,6 +417,7 @@ function renderMetasPanel(state) {
   const goalProgress = metas?.goalProgress || {};
   const scopedCells = Array.isArray(state.metasCells) ? state.metasCells : [];
   const selectedCell = String(state.metasCellFilter || '');
+  const showCellFilter = state.accessScope !== 'cell' && scopedCells.length > 1;
   const controlEntries = Array.isArray(state.processControlEntries) ? state.processControlEntries : [];
   const controlDetailEntry = state.controlDetailEntry || null;
 
@@ -421,6 +440,7 @@ function renderMetasPanel(state) {
       accent: 'accent-faith friend-summary-card-key',
     },
   ];
+  const metasSummaryView = getVisibleSummaryCards(summaryCards, Boolean(state.showAllMetasSummaryCards));
 
   const goalItems = [
     { label: 'Levántate', goal: Number(goals.levantateGoal) || 0, achieved: Number(goalProgress.levantate) || 0 },
@@ -433,8 +453,10 @@ function renderMetasPanel(state) {
   const pendingCount = controlEntries.filter((e) => e.noted && !e.complete).length;
   const repeatCount = controlEntries.filter((e) => (e.processCount || 0) > 1).length;
   const outsideCohortCount = controlEntries.filter((e) => e.outsideCohort).length;
+  const controlCellNumbers = [...new Set(controlEntries.map((entry) => String(entry.cellNumber || '').trim()).filter(Boolean))];
+  const shouldGroupControlByCell = state.accessScope !== 'cell' && controlCellNumbers.length > 1;
 
-  const renderControlCard = (entry) => {
+  const renderControlCard = (entry, options = {}) => {
     const statusClass = entry.statusKey === 'complete' ? 'is-complete'
       : entry.statusKey === 'outside' ? 'is-outside'
       : entry.statusKey === 'missed' ? 'is-missed'
@@ -449,7 +471,7 @@ function renderMetasPanel(state) {
     ];
     const cycleText = entry.processCount > 1 ? `${entry.processCount} ciclos en histórico` : `${entry.processCount || 0} ciclo${entry.processCount === 1 ? ' en histórico' : 's'}`;
     const dateRange = formatTrackingRangeLabel(entry.firstReportDate, entry.lastReportDate);
-    const cellBadge = showCellBadge && entry.cellNumber
+    const cellBadge = options.showCellBadge && entry.cellNumber
       ? `<span class="friend-process-cell-badge friend-process-footer-badge">Célula ${escapeHtml(String(entry.cellNumber))}</span>`
       : '';
     return `
@@ -480,38 +502,93 @@ function renderMetasPanel(state) {
     `;
   };
 
+  const renderControlContent = () => {
+    if (!controlEntries.length) {
+      return '<p class="empty-state" style="padding:16px 0">Sin amigos en el proceso para este cuatrimestre.</p>';
+    }
+    if (!shouldGroupControlByCell) {
+      const showGroupedCellBadge = state.accessScope !== 'cell' && controlCellNumbers.length === 1;
+      return controlEntries.map((entry) => renderControlCard(entry, { showCellBadge: showGroupedCellBadge })).join('');
+    }
+
+    const groupedControl = new Map();
+    controlEntries.forEach((entry) => {
+      const cellNumber = String(entry.cellNumber || '').trim() || 'Sin célula';
+      if (!groupedControl.has(cellNumber)) groupedControl.set(cellNumber, []);
+      groupedControl.get(cellNumber).push(entry);
+    });
+
+    const orderedGroupedControl = [...groupedControl.entries()].sort(([leftCell], [rightCell]) => {
+      const leftIsNumeric = /^\d+$/.test(leftCell);
+      const rightIsNumeric = /^\d+$/.test(rightCell);
+      if (leftIsNumeric && rightIsNumeric) return Number(leftCell) - Number(rightCell);
+      if (leftIsNumeric) return -1;
+      if (rightIsNumeric) return 1;
+      return leftCell.localeCompare(rightCell, 'es', { numeric: true, sensitivity: 'base' });
+    });
+
+    return orderedGroupedControl.map(([cellNumber, items]) => {
+      const label = /^\d+$/.test(cellNumber) ? `Célula ${cellNumber}` : cellNumber;
+      const subtitle = `${items.length} ${items.length === 1 ? 'caso' : 'casos'}`;
+      return `
+        <details class="friend-process-group friend-control-group">
+          <summary class="friend-process-group-summary">
+            <div class="friend-process-group-heading">
+              <strong class="friend-process-group-title">${escapeHtml(label)}</strong>
+              <span class="friend-process-group-count">${escapeHtml(subtitle)}</span>
+            </div>
+            <span class="friend-process-group-toggle" aria-hidden="true">Ver</span>
+          </summary>
+          <div class="friend-process-group-grid">
+            ${items.map((entry) => renderControlCard(entry, { showCellBadge: false })).join('')}
+          </div>
+        </details>
+      `;
+    }).join('');
+  };
+
   return `
-    <section class="panel panel-soft full-width" id="friend-tracking-panel">
-      <div class="panel-head">
-        <div>
-          <p class="eyebrow" id="friend-tracking-goals-eyebrow">Meta cuatrimestral</p>
-          <h2 id="friend-tracking-goals-title">${metas ? 'En curso' : 'Objetivos RCM por célula'}${quarterLabel}</h2>
+    <div class="seguimiento-next-shell">
+      <section class="panel panel-soft full-width" id="friend-tracking-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow" id="friend-tracking-goals-eyebrow">Meta cuatrimestral</p>
+            <h2 id="friend-tracking-goals-title">${metas ? 'En curso' : 'Objetivos RCM por célula'}</h2>
+          </div>
+          <div class="friend-tracking-head-tools">
+            ${showCellFilter ? `
+              <select class="form-select friend-tracking-cell-filter-native" data-action="change-metas-cell" style="height:32px;padding:2px 8px;font-size:.85rem" aria-label="Filtrar por célula">
+                <option value="">Vista general</option>
+                ${scopedCells.map((cell) => `<option value="${escapeHtml(String(cell || ''))}"${selectedCell === String(cell || '') ? ' selected' : ''}>Célula ${escapeHtml(String(cell || ''))}</option>`).join('')}
+              </select>
+            ` : ''}
+            ${scope.year && scope.quarter ? `<span class="count-chip">Q${escapeHtml(String(scope.quarter))}/${escapeHtml(String(scope.year))}</span>` : ''}
+          </div>
         </div>
-        <div class="friend-tracking-head-tools">
-          ${scopedCells.length > 1 ? `
-            <select class="form-select friend-tracking-cell-filter-native" data-action="change-metas-cell" style="height:32px;padding:2px 8px;font-size:.85rem" aria-label="Filtrar por célula">
-              <option value="">Vista general</option>
-              ${scopedCells.map((cell) => `<option value="${escapeHtml(String(cell || ''))}"${selectedCell === String(cell || '') ? ' selected' : ''}>Célula ${escapeHtml(String(cell || ''))}</option>`).join('')}
-            </select>
+        ${loading && !metas ? '<p class="empty-state" style="padding:16px 0">Cargando datos…</p>' : ''}
+        ${!loading && !metas ? '<p class="empty-state" style="padding:16px 0">Sin datos para el periodo actual.</p>' : ''}
+        ${metas ? `
+          <div id="friend-tracking-summary-grid" class="summary-grid">
+            ${metasSummaryView.visibleCards.map(({ label, value, hint, accent }) => `
+              <article class="summary-card summary-card-dashboard friend-summary-card ${escapeHtml(accent || '')}">
+                <span class="summary-label">${escapeHtml(label)}</span>
+                <strong class="summary-value">${escapeHtml(value)}</strong>
+                <span class="summary-hint">${escapeHtml(hint)}</span>
+              </article>
+            `).join('')}
+          </div>
+          ${metasSummaryView.hiddenCount ? `
+            <div class="seg-summary-mobile-actions">
+              <button type="button" class="btn-ghost catalog-mobile-more" data-action="toggle-metas-summary-cards" aria-expanded="${state.showAllMetasSummaryCards ? 'true' : 'false'}">${state.showAllMetasSummaryCards ? 'Ver menos' : `Ver ${metasSummaryView.hiddenCount} más`}</button>
+            </div>
           ` : ''}
-          ${scope.year && scope.quarter ? `<span class="count-chip">Q${escapeHtml(String(scope.quarter))}/${escapeHtml(String(scope.year))}</span>` : ''}
-        </div>
-      </div>
-      ${loading && !metas ? '<p class="empty-state" style="padding:16px 0">Cargando datos…</p>' : ''}
-      ${!loading && !metas ? '<p class="empty-state" style="padding:16px 0">Sin datos para el periodo actual.</p>' : ''}
+        ` : ''}
+      </section>
       ${metas ? `
-        <div id="friend-tracking-summary-grid" class="summary-grid">
-          ${summaryCards.map(({ label, value, hint, accent }) => `
-            <article class="summary-card summary-card-dashboard friend-summary-card ${escapeHtml(accent || '')}">
-              <span class="summary-label">${escapeHtml(label)}</span>
-              <strong class="summary-value">${escapeHtml(value)}</strong>
-              <span class="summary-hint">${escapeHtml(hint)}</span>
-            </article>
-          `).join('')}
-        </div>
-        <div class="friend-tracking-layout">
-          <div class="friend-tracking-main">
-            <section class="friend-tracking-card friend-tracking-card-control">
+        <section class="panel panel-soft full-width friend-tracking-detail-panel">
+          <div class="friend-tracking-layout">
+            <div class="friend-tracking-main">
+              <section class="friend-tracking-card friend-tracking-card-control">
               <div class="friend-tracking-card-head friend-tracking-card-head-accent friend-tracking-card-head-gold">
                 <div>
                   <h3>Control del proceso</h3>
@@ -532,10 +609,8 @@ function renderMetasPanel(state) {
                   </span>
                 `).join('')}
               </div>
-              <div class="friend-tracking-friends-grid friend-tracking-control-list">
-                ${controlEntries.length
-                  ? controlEntries.map((entry) => renderControlCard(entry)).join('')
-                  : '<p class="empty-state" style="padding:16px 0">Sin amigos en el proceso para este cuatrimestre.</p>'}
+              <div class="friend-tracking-friends-grid friend-tracking-control-list${shouldGroupControlByCell ? ' is-grouped' : ''}">
+                ${renderControlContent()}
               </div>
             </section>
           </div>
@@ -569,8 +644,9 @@ function renderMetasPanel(state) {
           </aside>
         </div>
         ${renderControlDetailDialog(scope, controlDetailEntry)}
+      </section>
       ` : ''}
-    </section>
+    </div>
   `;
 }
 

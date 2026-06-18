@@ -1387,6 +1387,7 @@ export function createSeguimientoFeature(options = {}) {
     dashboardTimeScope: 'week',
     dashboardPeriod: '',
     dashboardAttendanceTab: 'hermanos',
+    showAllDashboardSummaryCards: false,
     dashboardData: null,
     previewReport: null,
     previewMode: 'default',
@@ -1401,6 +1402,7 @@ export function createSeguimientoFeature(options = {}) {
     metasData: null,
     metasLoading: false,
     metasCellFilter: '',
+    showAllMetasSummaryCards: false,
     metasCells: [],
     processControlEntries: [],
     controlDetailKey: '',
@@ -1463,13 +1465,17 @@ export function createSeguimientoFeature(options = {}) {
     }
   }
 
-  function changeAccessScope(scopeKey) {
+  async function changeAccessScope(scopeKey) {
     const nextScope = String(scopeKey || '').trim();
     if (!nextScope || nextScope === state.accessScope) return;
     state.accessScope = nextScope;
     state.cellFilter = '';
+    state.metasCellFilter = '';
     syncDerivedState();
     render();
+    if (state.activeTab === 'goals') {
+      await loadMetas();
+    }
   }
 
   function changeWeekOffset(offset) {
@@ -1512,8 +1518,21 @@ export function createSeguimientoFeature(options = {}) {
       .sort((left, right) => Number(left) - Number(right));
   }
 
+  function syncMetasCellFilter() {
+    const allowedCells = buildMetasCells();
+    state.metasCells = allowedCells;
+    const shouldShow = state.accessScope !== 'cell' && allowedCells.length > 1;
+    if (!shouldShow) {
+      state.metasCellFilter = '';
+      return;
+    }
+    if (state.metasCellFilter && !allowedCells.includes(String(state.metasCellFilter))) {
+      state.metasCellFilter = '';
+    }
+  }
+
   async function loadMetas() {
-    state.metasCells = buildMetasCells();
+    syncMetasCellFilter();
     state.metasLoading = true;
     render();
     try {
@@ -1603,6 +1622,16 @@ export function createSeguimientoFeature(options = {}) {
     const nextTab = String(tabKey || '').trim() === 'amigos' ? 'amigos' : 'hermanos';
     if (nextTab === state.dashboardAttendanceTab) return;
     state.dashboardAttendanceTab = nextTab;
+    render();
+  }
+
+  function toggleDashboardSummaryCards() {
+    state.showAllDashboardSummaryCards = !state.showAllDashboardSummaryCards;
+    render();
+  }
+
+  function toggleMetasSummaryCards() {
+    state.showAllMetasSummaryCards = !state.showAllMetasSummaryCards;
     render();
   }
 
@@ -1779,6 +1808,8 @@ export function createSeguimientoFeature(options = {}) {
       changeDashboardTimeScope,
       changeDashboardPeriod,
       changeDashboardAttendanceTab,
+      toggleDashboardSummaryCards,
+      toggleMetasSummaryCards,
       changeSupervisor,
       changeSupervisorWeek,
       toggleShowOffering,

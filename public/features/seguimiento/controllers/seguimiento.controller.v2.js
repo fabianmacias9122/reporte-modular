@@ -179,6 +179,14 @@ export function attachSeguimientoController(root, actions) {
       actions.changeDashboardAttendanceTab(String(button.dataset.tab || 'hermanos'));
       return;
     }
+    if (action === 'toggle-dashboard-summary-cards') {
+      actions.toggleDashboardSummaryCards();
+      return;
+    }
+    if (action === 'toggle-metas-summary-cards') {
+      actions.toggleMetasSummaryCards();
+      return;
+    }
     if (action === 'change-totals-scope') {
       actions.changeTotalsScope(String(button.dataset.scope || 'cell'));
       return;
