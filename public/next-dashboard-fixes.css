@@ -1,0 +1,61 @@
+/* Scoped fixes for /next dashboard parity without replacing the legacy base theme. */
+
+.trend-table-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+  width: 100%;
+  max-height: none;
+}
+
+.trend-table thead th {
+  position: static;
+  top: auto;
+  z-index: auto;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.trend-table tfoot td {
+  position: static;
+  bottom: auto;
+  z-index: auto;
+}
+
+@media (max-width: 820px) {
+  .trend-table thead th,
+  .trend-table tfoot td {
+    position: static;
+  }
+
+  .trend-th-ev {
+    min-width: 90px;
+    white-space: normal;
+    font-size: 0.62rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .trend-th-ev {
+    min-width: 48px;
+    font-size: 0.6rem;
+    padding: 5px 4px;
+  }
+
+  .trend-table td {
+    padding: 4px;
+  }
+
+  .trend-week-cell {
+    gap: 0;
+  }
+
+  .trend-date {
+    display: none;
+  }
+
+  .trend-table thead tr th:nth-child(7),
+  .trend-table tbody tr td:nth-child(7),
+  .trend-table tfoot tr td:nth-child(7) {
+    display: none;
+  }
+}

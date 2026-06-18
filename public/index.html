@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/next/">
+  <title>Reporte Celular</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/app.css?v=20260518-card-shrink">
+  <link rel="stylesheet" href="./next-dashboard-fixes.css?v=20260611-footer-fix-only">
+</head>
+<body class="app-fixed">
+  <header class="iafcj-topbar">
+    <div class="iafcj-topbar-brand">
+      <img
+        src="https://images.builderservices.io/s/cdn/v1.0/i/m?url=https%3A%2F%2Fstorage.googleapis.com%2Fproduction-hostgator-mexico-v1-0-8%2F808%2F1211808%2F678J13Az%2Fb0b80e00f02b49eb84fce02bb27ff40f&methods=resize%2C500%2C5000"
+        alt="IAFCJ"
+        class="iafcj-topbar-logo">
+    </div>
+    <div class="iafcj-topbar-inner">
+      <div class="iafcj-topbar-left">
+        <span class="iafcj-topbar-kicker">IAFCJ · Ministerio Celular</span>
+        <strong class="iafcj-topbar-title" id="topbar-route-label">Reporte</strong>
+      </div>
+      <div class="iafcj-topbar-right">
+        <div class="lang-switcher" id="lang-switcher">
+          <button type="button" class="lang-btn is-active" data-lang="es" aria-label="Español">ES</button>
+          <button type="button" class="lang-btn" data-lang="en" aria-label="English">EN</button>
+        </div>
+        <button id="user-chip" class="user-chip is-hidden" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          <span id="user-chip-name"></span>
+          <span class="user-chip-exit">Salir</span>
+        </button>
+        <div class="iafcj-topbar-status">
+          <span class="iafcj-topbar-status-dot" id="health-status-dot"></span>
+          <strong class="iafcj-topbar-status-text" id="health-status">Revisando...</strong>
+        </div>
+        <button id="topbar-mobile-btn" class="topbar-mobile-btn is-hidden" type="button" aria-label="Menú de usuario" aria-expanded="false">
+          <span id="topbar-mobile-initials" class="topbar-mobile-initials">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          </span>
+        </button>
+      </div>
+    </div>
+    <p id="hero-caption" hidden></p>
+  </header>
+
+  <div id="app-splash" class="app-splash is-hidden">
+    <div class="app-splash-card">
+      <div class="app-splash-spinner" aria-hidden="true"></div>
+      <strong class="app-splash-title">Cargando…</strong>
+      <span class="app-splash-sub" id="app-splash-sub">Despertando el servidor, un momento.</span>
+    </div>
+  </div>
+
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-card-head">
+        <img
+          src="https://images.builderservices.io/s/cdn/v1.0/i/m?url=https%3A%2F%2Fstorage.googleapis.com%2Fproduction-hostgator-mexico-v1-0-8%2F808%2F1211808%2F678J13Az%2Fb0b80e00f02b49eb84fce02bb27ff40f&methods=resize%2C500%2C5000"
+          alt="IAFCJ"
+          class="login-card-logo">
+      </div>
+      <div class="login-card-body">
+        <div>
+          <h1 class="login-card-title">Reporte Celular</h1>
+          <p class="login-card-sub">Selecciona tu nombre para acceder</p>
+        </div>
+        <div class="form-field">
+          <label class="field-label" for="login-username">Usuario</label>
+          <input id="login-username" class="field-input" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ej. fabian.macias">
+        </div>
+        <div class="form-field" id="login-password-field" hidden>
+          <label class="field-label" for="login-password" id="login-password-label">Contraseña</label>
+          <input id="login-password" class="field-input" type="password" autocomplete="current-password" placeholder="Tu contraseña">
+        </div>
+        <div class="form-field" id="login-password-confirm-field" hidden>
+          <label class="field-label" for="login-password-confirm">Confirma tu contraseña</label>
+          <input id="login-password-confirm" class="field-input" type="password" autocomplete="new-password" placeholder="Repite la contraseña">
+        </div>
+        <p id="login-help" class="login-help" hidden></p>
+        <p id="login-error" class="login-error" hidden></p>
+        <button id="login-btn" class="btn-save-next" type="button" disabled>Entrar →</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="topbar-mobile-card" class="topbar-mobile-card" hidden>
+    <div class="tmc-user-row">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      <span id="tmc-user-name" class="tmc-user-name">—</span>
+    </div>
+    <div class="tmc-status-row">
+      <span class="iafcj-topbar-status-dot" id="tmc-status-dot"></span>
+      <span id="tmc-status-text" class="tmc-status-text">Revisando...</span>
+    </div>
+    <button id="tmc-logout-btn" type="button" class="tmc-logout-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <span>Salir</span>
+    </button>
+  </div>
+
+  <div id="app-layout">
+    <aside class="app-sidebar">
+      <nav class="sidebar-nav" aria-label="Navegación principal">
+        <button class="sidebar-link is-active" id="show-report-view" type="button" data-feature-key="reporte" data-label="Reporte">
+          <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>Reporte</span>
+        </button>
+        <button class="sidebar-link is-hidden" id="show-seguimiento-view" type="button" data-feature-key="seguimiento" data-label="Seguimiento">
+          <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>Seguimiento</span>
+        </button>
+        <button class="sidebar-link" id="show-admin-view" type="button" data-feature-key="catalogos" data-label="Catálogos">
+          <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Catálogos</span>
+        </button>
+        <button class="sidebar-link is-hidden" id="show-settings-view" type="button" data-feature-key="configuracion" data-label="Configuración">
+          <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Config.</span>
+        </button>
+      </nav>
+    </aside>
+
+    <main id="app-content">
+      <div class="page-shell">
+        <div id="feedback" class="feedback" hidden></div>
+        <div id="global-grace-banner" class="grace-banner" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2Zm1 11h-2V7h2Zm0 4h-2v-2h2Z"/>
+          </svg>
+          <div id="global-grace-banner-text" class="grace-banner-text"></div>
+          <button type="button" id="global-grace-banner-capture" class="grace-banner-action">Capturar ahora</button>
+          <button type="button" id="global-grace-banner-close" class="grace-banner-close" aria-label="Cerrar aviso">x</button>
+        </div>
+        <div class="workspace-grid">
+          <div id="app-root"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script type="module" src="./app.js?v=20260610-seguimiento-shell"></script>
+</body>
+</html>
