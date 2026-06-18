@@ -35,6 +35,10 @@
 
 * , *::before, *::after { box-sizing: border-box; }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   min-height: 100%;
 }
