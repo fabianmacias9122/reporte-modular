@@ -243,6 +243,12 @@ function renderSegTabs(state) {
   const tabs = Array.isArray(state.segTabs) ? state.segTabs : [];
   if (!tabs.length) return '';
   return `
+    <div class="seg-view-mobile-switch">
+      <label class="seg-view-mobile-label" for="seg-view-mobile-select">Vista</label>
+      <select id="seg-view-mobile-select" class="seguimiento-filter-select seg-view-mobile-select" data-action="change-tab-select" aria-label="Seleccionar vista de seguimiento">
+        ${tabs.map((tab) => `<option value="${escapeHtml(tab.key)}"${tab.key === state.activeTab ? ' selected' : ''}>${escapeHtml(tab.label)}</option>`).join('')}
+      </select>
+    </div>
     <div class="seg-view-tabs" id="seg-view-tab-bar">
       ${tabs.map((tab) => `
         <button type="button" class="seg-view-tab${tab.key === state.activeTab ? ' is-active' : ''}" data-action="change-tab" data-tab="${escapeHtml(tab.key)}">${escapeHtml(tab.label)}</button>

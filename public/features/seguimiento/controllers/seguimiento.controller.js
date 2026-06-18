@@ -104,6 +104,10 @@ export function attachSeguimientoController(root, actions) {
     const select = event.target.closest('select[data-action]');
     if (!select) return;
     const action = String(select.dataset.action || '');
+    if (action === 'change-tab-select') {
+      actions.changeTab(String(select.value || ''));
+      return;
+    }
     if (action === 'change-metas-cell') {
       await actions.changeMetasCellFilter(String(select.value || ''));
     }
