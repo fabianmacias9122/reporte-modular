@@ -299,6 +299,8 @@ export async function bootstrapApp(options = {}) {
   loginExperience.init();
   appState.currentUser = restoreStoredSession();
   if (!appState.currentUser) {
+    // Show login immediately after sign out; splash is for async feature boot only.
+    hideSplash();
     appState.currentUser = await loginExperience.resolveSession();
   }
 
