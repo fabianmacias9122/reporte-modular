@@ -1,4 +1,4 @@
-import { bootstrapApp } from './core/session/index.js?v=20260610-seguimiento-shell';
+import { bootstrapApp } from './core/session/index.js';
 
 bootstrapApp({
   rootSelector: '#app-root',
