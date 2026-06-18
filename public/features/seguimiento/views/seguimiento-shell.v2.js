@@ -256,6 +256,29 @@ function renderSegTabs(state) {
   `;
 }
 
+function renderScopeState(tab, wrapperClass = 'rcs-scope-bridge') {
+  if (!tab) return '';
+  return `
+    <div class="${escapeHtml(wrapperClass)}">
+      <div class="dashboard-scope-state rcs-scope-state" role="status" aria-live="polite">
+        <span class="dashboard-scope-state-label">${escapeHtml(tab.label)}</span>
+        ${tab.sublabel ? `<span class="dashboard-scope-state-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderScopedPanelBundle(scopeMarkup, panelMarkup, bundleClass = '') {
+  if (!panelMarkup) return '';
+  if (!scopeMarkup) return panelMarkup;
+  return `
+    <div class="seg-scope-panel-bundle full-width${bundleClass ? ` ${escapeHtml(bundleClass)}` : ''}">
+      ${scopeMarkup}
+      ${panelMarkup}
+    </div>
+  `;
+}
+
 function getSummaryPreviewCount() {
   if (typeof window === 'undefined') return 4;
   const width = Number(window.innerWidth || 0);
@@ -278,24 +301,18 @@ function renderScopeTabs(state) {
   const tabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
   if (!tabs.length || state.activeTab !== 'goals') return '';
   if (tabs.length === 1) {
-    const tab = tabs[0];
-    return `
-      <div class="dashboard-scope-tabs seg-access-scope-tabs is-single-scope">
-        <div class="dashboard-scope-state" role="status" aria-live="polite">
-          <span class="dashboard-scope-state-label">${escapeHtml(tab.label)}</span>
-          ${tab.sublabel ? `<span class="dashboard-scope-state-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </div>
-      </div>
-    `;
+    return '';
   }
   return `
-    <div class="dashboard-scope-tabs seg-access-scope-tabs" role="tablist">
-      ${tabs.map((tab) => `
-        <button type="button" class="dashboard-scope-tab${tab.key === state.accessScope ? ' is-active' : ''}" data-action="change-access-scope" data-scope="${escapeHtml(tab.key)}" role="tab" aria-selected="${tab.key === state.accessScope}">
-          ${escapeHtml(tab.label)}
-          ${tab.sublabel ? `<span class="scope-tab-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </button>
-      `).join('')}
+    <div class="rcs-scope-bridge seg-scope-panel-bridge goals-scope-tabs-bridge">
+      <div id="seg-access-scope-tabs" class="dashboard-scope-tabs rcs-scope-tabs seg-access-scope-tabs" role="tablist">
+        ${tabs.map((tab) => `
+          <button type="button" class="dashboard-scope-tab${tab.key === state.accessScope ? ' is-active' : ''}" data-action="change-access-scope" data-scope="${escapeHtml(tab.key)}" role="tab" aria-selected="${tab.key === state.accessScope}">
+            ${escapeHtml(tab.label)}
+            ${tab.sublabel ? `<span class="scope-tab-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
+          </button>
+        `).join('')}
+      </div>
     </div>
   `;
 }
@@ -304,15 +321,7 @@ function renderIntegratedScopeTabs(state) {
   const tabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
   if (!tabs.length || state.activeTab !== 'seguimiento') return '';
   if (tabs.length === 1) {
-    const tab = tabs[0];
-    return `
-      <div class="rcs-scope-bridge">
-        <div class="dashboard-scope-state rcs-scope-state" role="status" aria-live="polite">
-          <span class="dashboard-scope-state-label">${escapeHtml(tab.label)}</span>
-          ${tab.sublabel ? `<span class="dashboard-scope-state-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </div>
-      </div>
-    `;
+    return renderScopeState(tabs[0]);
   }
   return `
     <div class="rcs-scope-bridge">
@@ -654,24 +663,18 @@ function renderDashboardScopeTabs(state) {
   const tabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
   if (!tabs.length || state.activeTab !== 'dashboard') return '';
   if (tabs.length === 1) {
-    const tab = tabs[0];
-    return `
-      <div class="dashboard-scope-tabs is-single-scope">
-        <div class="dashboard-scope-state" role="status" aria-live="polite">
-          <span class="dashboard-scope-state-label">${escapeHtml(tab.label)}</span>
-          ${tab.sublabel ? `<span class="dashboard-scope-state-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </div>
-      </div>
-    `;
+    return renderScopeState(tabs[0], 'rcs-scope-bridge seg-scope-panel-bridge dashboard-scope-bridge');
   }
   return `
-    <div class="dashboard-scope-tabs" role="tablist">
-      ${tabs.map((tab) => `
-        <button type="button" class="dashboard-scope-tab${tab.key === state.accessScope ? ' is-active' : ''}" data-action="change-access-scope" data-scope="${escapeHtml(tab.key)}" role="tab" aria-selected="${tab.key === state.accessScope}">
-          ${escapeHtml(tab.label)}
-          ${tab.sublabel ? `<span class="scope-tab-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </button>
-      `).join('')}
+    <div class="rcs-scope-bridge seg-scope-panel-bridge dashboard-scope-tabs-bridge">
+      <div class="dashboard-scope-tabs rcs-scope-tabs" role="tablist">
+        ${tabs.map((tab) => `
+          <button type="button" class="dashboard-scope-tab${tab.key === state.accessScope ? ' is-active' : ''}" data-action="change-access-scope" data-scope="${escapeHtml(tab.key)}" role="tab" aria-selected="${tab.key === state.accessScope}">
+            ${escapeHtml(tab.label)}
+            ${tab.sublabel ? `<span class="scope-tab-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
+          </button>
+        `).join('')}
+      </div>
     </div>
   `;
 }
@@ -1523,16 +1526,27 @@ function renderReportPreviewDialog(report, options = {}) {
 export function renderSeguimientoShell(state) {
   const summary = state.summary;
   const cards = state.cards;
+  const scopeTabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
+  const singleScopeTab = scopeTabs.length === 1 ? scopeTabs[0] : null;
+  const dashboardScopeMarkup = state.activeTab === 'dashboard'
+    ? renderDashboardScopeTabs(state)
+    : '';
+  const goalsScopeMarkup = state.activeTab === 'goals'
+    ? (singleScopeTab
+      ? renderScopeState(singleScopeTab, 'rcs-scope-bridge seg-scope-panel-bridge seg-access-scope-bridge')
+      : renderScopeTabs(state))
+    : '';
+  const dashboardPanelMarkup = state.activeTab === 'dashboard' ? renderDashboardPanel(state) : '';
+  const goalsPanelMarkup = state.activeTab === 'goals' ? renderMetasPanel(state) : '';
 
   return `
     <section class="seguimiento-next-shell">
       ${renderSegTabs(state)}
-      ${renderScopeTabs(state)}
       ${state.activeTab === 'seguimiento' ? renderWeekContext(state) : ''}
       ${state.activeTab === 'seguimiento' ? renderTotalsPanel(state) : ''}
       ${state.activeTab === 'supervisor' ? renderSupervisorConsolidadoPanel(state) : ''}
-      ${state.activeTab === 'dashboard' ? renderDashboardPanel(state) : ''}
-      ${state.activeTab === 'goals' ? renderMetasPanel(state) : ''}
+      ${state.activeTab === 'dashboard' ? renderScopedPanelBundle(dashboardScopeMarkup, dashboardPanelMarkup, 'dashboard-scope-bundle') : ''}
+      ${state.activeTab === 'goals' ? renderScopedPanelBundle(goalsScopeMarkup, goalsPanelMarkup, 'goals-scope-bundle') : ''}
       ${state.activeTab !== 'seguimiento' && state.activeTab !== 'supervisor' && state.activeTab !== 'dashboard' && state.activeTab !== 'goals' ? renderPlaceholderPanel((state.segTabs || []).find((tab) => tab.key === state.activeTab)?.label || 'Seguimiento') : ''}
       ${state.activeTab === 'seguimiento' ? `
     <section class="panel panel-soft full-width">

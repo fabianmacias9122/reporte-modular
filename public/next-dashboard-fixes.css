@@ -1,5 +1,47 @@
 /* Scoped fixes for /next dashboard parity without replacing the legacy base theme. */
 
+.seg-scope-panel-bundle {
+  display: grid;
+  gap: 0;
+}
+
+.seg-scope-panel-bundle > .seg-scope-panel-bridge {
+  margin-bottom: -1px;
+  border: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+
+.seg-scope-panel-bundle > .panel {
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.seg-scope-panel-bundle > .seguimiento-next-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.seg-scope-panel-bundle > .seguimiento-next-shell > .panel:first-child {
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.seg-scope-panel-bundle > .seg-scope-panel-bridge .dashboard-scope-state {
+  width: 100%;
+}
+
+.seg-summary-mobile-actions {
+  display: flex;
+  justify-content: center;
+  margin: 10px 0 14px;
+}
+
 .trend-table-wrap {
   overflow-x: auto;
   overflow-y: visible;
@@ -57,5 +99,98 @@
   .trend-table tbody tr td:nth-child(7),
   .trend-table tfoot tr td:nth-child(7) {
     display: none;
+  }
+}
+
+/* /next - Seguimiento mobile selector polish */
+@media (max-width: 900px) {
+  .seg-view-mobile-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    min-height: 44px;
+    padding-right: 42px;
+    background-image:
+      linear-gradient(180deg, rgba(80, 99, 184, 0.04), rgba(80, 99, 184, 0.01)),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%232a3eb1' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat, no-repeat;
+    background-position: 0 0, right 12px center;
+    background-size: auto, 16px 16px;
+  }
+
+  .seg-view-mobile-select::-ms-expand {
+    display: none;
+  }
+
+  #seg-totals-panel .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  #seg-totals-panel .seg-totals-scope-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    flex-wrap: nowrap;
+    margin-left: auto;
+    padding-top: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  #seg-totals-panel .seg-totals-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    min-height: 0;
+    padding: 5px 13px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  #seg-totals-panel .seg-totals-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 6px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.15;
+    user-select: none;
+    white-space: normal;
+    max-width: none;
+  }
+
+  #seg-totals-panel .seg-totals-toggle input {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 640px) {
+  #seg-totals-panel .panel-head {
+    gap: 10px;
+  }
+
+  #seg-totals-panel .seg-totals-scope-tabs {
+    gap: 4px;
+    padding-top: 0;
+  }
+
+  #seg-totals-panel .seg-totals-tab {
+    padding: 5px 12px;
+    font-size: 0.77rem;
+  }
+
+  #seg-totals-panel .seg-totals-toggle {
+    font-size: 0.76rem;
+    gap: 5px;
+    margin-left: 6px;
   }
 }
