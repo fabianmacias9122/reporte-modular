@@ -96,9 +96,9 @@ body.app-fixed {
 }
 
 .app-splash-card {
-  background: var(--next-surface-strong);
-  border: 1px solid var(--next-line);
-  border-radius: var(--next-radius-sm);
+  background: var(--panel, #1a1a1a);
+  border: 1px solid var(--line, #333);
+  border-radius: 14px;
   padding: 28px 32px;
   display: flex;
   flex-direction: column;
@@ -106,15 +106,14 @@ body.app-fixed {
   gap: 14px;
   min-width: 220px;
   text-align: center;
-  color: var(--next-ink);
-  box-shadow: var(--next-shadow);
+  color: var(--text, #f5f5f5);
 }
 
 .app-splash-spinner {
   width: 36px;
   height: 36px;
   border: 3px solid rgba(255, 255, 255, 0.18);
-  border-top-color: var(--next-accent);
+  border-top-color: #ff7a00;
   border-radius: 50%;
   animation: app-splash-spin 0.9s linear infinite;
 }
