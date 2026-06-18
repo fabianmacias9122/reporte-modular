@@ -51,6 +51,9 @@ function renderControlDetailDialog(scope, entry) {
     ? `${entry.processCount} ciclos en histórico`
     : `${entry.processCount || 0} ciclo${entry.processCount === 1 ? ' en histórico' : 's'}`;
   const missingText = entry.pendingSteps?.length ? entry.pendingSteps.join(', ') : 'Ninguno';
+  const heroSummaryText = entry.statusKey === 'missed'
+    ? 'Tiene hitos vencidos dentro del proceso.'
+    : `Le falta: ${missingText}`;
   const outcomeText = entry.backendOutcome || entry.backendStatus
     ? getFriendTrackingBackendOutcomeLabel(entry.backendOutcome, entry.backendStatus)
     : entry.cycleClosed
@@ -66,23 +69,26 @@ function renderControlDetailDialog(scope, entry) {
     {
       label: entry.lateEntry ? 'Anotado tardío' : 'Anotado',
       done: entry.noted,
+      missed: entry.notedMissed,
       when: entry.noted
         ? `Sem. ${entry.notedWeek || '?'}${entry.notedDate ? ` · ${formatTrackingDateLabel(entry.notedDate)}` : ''}`
-        : 'Pendiente',
+        : entry.notedMissed ? 'No lo hizo en tiempo' : 'Pendiente',
     },
     {
       label: 'Levántate',
       done: entry.levantate,
+      missed: entry.levantateMissed,
       when: entry.levantate
         ? `Sem. ${entry.levantateWeek || '?'}${entry.levantateDate ? ` · ${formatTrackingDateLabel(entry.levantateDate)}` : ''}`
-        : 'Pendiente',
+        : entry.levantateMissed ? 'No asistió en su semana' : 'Pendiente',
     },
     {
       label: 'Restauración',
       done: entry.restauracion,
+      missed: entry.restauracionMissed,
       when: entry.restauracion
         ? `Sem. ${entry.restauracionWeek || '?'}${entry.restauracionDate ? ` · ${formatTrackingDateLabel(entry.restauracionDate)}` : ''}`
-        : 'Pendiente',
+        : entry.restauracionMissed ? 'No asistió en su semana' : 'Pendiente',
     },
     {
       label: 'Cierre semana 16',
@@ -99,6 +105,8 @@ function renderControlDetailDialog(scope, entry) {
     ? 'is-complete'
     : entry.statusKey === 'outside'
       ? 'is-outside'
+      : entry.statusKey === 'missed'
+        ? 'is-missed'
       : entry.statusKey === 'progress'
         ? 'is-progress'
         : 'is-pending';
@@ -121,7 +129,7 @@ function renderControlDetailDialog(scope, entry) {
                 <strong class="friend-control-modal-name">${escapeHtml(entry.name)}</strong>
                 <span class="friend-process-status friend-process-status-control ${statusClass}">${escapeHtml(entry.statusLabel)}</span>
               </div>
-              <p class="friend-control-modal-summary">Le falta: ${escapeHtml(missingText)}</p>
+              <p class="friend-control-modal-summary">${escapeHtml(heroSummaryText)}</p>
             </div>
             <div class="friend-control-modal-tags">
               ${(entry.processCount > 1 ? `<span class="friend-control-cycle-badge is-repeat">${escapeHtml(cycleText)}</span>` : `<span class="friend-control-cycle-badge">${escapeHtml(cycleText)}</span>`)}
@@ -130,22 +138,13 @@ function renderControlDetailDialog(scope, entry) {
             </div>
           </section>
 
-          <section class="friend-control-modal-section">
-            <div class="friend-control-milestones">
-              ${[
-                { label: entry.noted ? (entry.lateEntry ? 'Anotado tardío' : 'Anotado') : 'No anotado', accent: entry.noted ? 'is-done' : 'is-off' },
-                { label: 'Levántate', accent: entry.levantate ? 'is-done' : 'is-off' },
-                { label: 'Restauración', accent: entry.restauracion ? 'is-done' : 'is-off' },
-                { label: 'Cierre sem. 16', accent: entry.cycleClosed ? 'is-done' : 'is-off' },
-              ].map((milestone) => `<span class="friend-control-milestone ${milestone.accent}">${escapeHtml(milestone.label)}</span>`).join('')}
-            </div>
-          </section>
-
           <section class="friend-control-modal-grid">
+            ${entry.statusKey === 'missed' ? '' : `
             <div class="friend-control-detail-card">
               <span class="friend-control-detail-label">Lectura</span>
               <strong class="friend-control-detail-value">${escapeHtml(entry.statusDetail || '—')}</strong>
             </div>
+            `}
             <div class="friend-control-detail-card">
               <span class="friend-control-detail-label">Salida backend</span>
               <strong class="friend-control-detail-value">${escapeHtml(outcomeText)}</strong>
@@ -154,7 +153,7 @@ function renderControlDetailDialog(scope, entry) {
               <span class="friend-control-detail-label">Fechas clave</span>
               <div class="friend-control-timeline">
                 ${milestoneTimeline.map((milestone) => `
-                  <div class="friend-control-timeline-row ${milestone.done ? 'is-done' : 'is-off'}">
+                  <div class="friend-control-timeline-row ${milestone.done ? 'is-done' : milestone.missed ? 'is-missed' : 'is-off'}">
                     <span class="friend-control-timeline-step">${escapeHtml(milestone.label)}</span>
                     <span class="friend-control-timeline-when">${escapeHtml(milestone.when)}</span>
                   </div>
@@ -438,16 +437,16 @@ function renderMetasPanel(state) {
   const renderControlCard = (entry) => {
     const statusClass = entry.statusKey === 'complete' ? 'is-complete'
       : entry.statusKey === 'outside' ? 'is-outside'
+      : entry.statusKey === 'missed' ? 'is-missed'
       : entry.statusKey === 'progress' ? 'is-progress'
       : 'is-pending';
     const cohortLabel = entry.noted ? (entry.lateEntry ? 'Anotado tardío' : 'Anotado') : 'No anotado';
     const milestoneItems = [
-      { label: cohortLabel, accent: entry.noted ? 'is-done' : 'is-off' },
-      { label: 'Levántate', accent: entry.levantate ? 'is-done' : 'is-off' },
-      { label: 'Restauración', accent: entry.restauracion ? 'is-done' : 'is-off' },
+      { label: cohortLabel, accent: entry.noted ? 'is-done' : entry.notedMissed ? 'is-missed' : 'is-off' },
+      { label: 'Levántate', accent: entry.levantate ? 'is-done' : entry.levantateMissed ? 'is-missed' : 'is-off' },
+      { label: 'Restauración', accent: entry.restauracion ? 'is-done' : entry.restauracionMissed ? 'is-missed' : 'is-off' },
       { label: 'Cierre sem. 16', accent: entry.cycleClosed ? 'is-done' : 'is-off' },
     ];
-    const missingText = entry.pendingSteps?.length ? entry.pendingSteps.join(', ') : 'Ninguno';
     const cycleText = entry.processCount > 1 ? `${entry.processCount} ciclos en histórico` : `${entry.processCount || 0} ciclo${entry.processCount === 1 ? ' en histórico' : 's'}`;
     const dateRange = formatTrackingRangeLabel(entry.firstReportDate, entry.lastReportDate);
     const cellBadge = showCellBadge && entry.cellNumber
@@ -464,7 +463,6 @@ function renderMetasPanel(state) {
             <span class="friend-process-status friend-process-status-control ${statusClass}">${escapeHtml(entry.statusLabel)}</span>
           </div>
           <div class="friend-control-summary">
-            <div class="friend-control-summary-main">${entry.complete ? 'Trayecto cubierto' : `Le falta: ${escapeHtml(missingText)}`}</div>
             <div class="friend-control-summary-sub">Alcance ${escapeHtml(String(entry.reachCount || 0))} · Culto ${escapeHtml(String(entry.sundayCount || 0))} · Semana máx ${escapeHtml(String(entry.currentWeek || 0))}</div>
           </div>
           <div class="friend-control-milestones">

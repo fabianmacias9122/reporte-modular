@@ -5,6 +5,27 @@ import { fetchCatalogs } from '../catalogos/data/catalogos.repository.js';
 import { getCellMembers } from '../catalogos/models/catalogs-state.js';
 import { fetchSeguimientoReport, fetchSeguimientoReports, fetchFriendTracking } from './data/seguimiento.repository.js';
 
+const TRACKING_TARGET_WEEKS = (() => {
+  const targetWeeks = {
+    noted: 2,
+    levantate: 6,
+    restauracion: 11,
+    cycleClosed: 16,
+  };
+  for (let week = 1; week <= 32; week += 1) {
+    const info = getRcmWeekInfo(week);
+    if (!info) break;
+    if (info.rcmKey === 'levantate') targetWeeks.levantate = info.week;
+    if (info.rcmKey === 'restauracion') targetWeeks.restauracion = info.week;
+    if (info.rcmKey === 'cielosAbiertos') targetWeeks.cycleClosed = info.week;
+  }
+  return targetWeeks;
+})();
+
+function isMissedMilestone(completed, currentWeek, targetWeek) {
+  return !completed && Number(currentWeek || 0) > Number(targetWeek || 0);
+}
+
 // ── Helpers portados del legacy (normalización de visitantes / proceso) ──────
 
 function normalizeVisitorKind(value) {
@@ -132,18 +153,35 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
     .map((entry) => {
       const backendFriend = friendsByName.get(normalizeVisitorName(entry.name));
       const cycleClosed = Boolean(backendFriend?.completed) || (entry.currentWeek || 0) >= 16;
+      const notedMissed = isMissedMilestone(entry.noted, entry.currentWeek, TRACKING_TARGET_WEEKS.noted);
+      const levantateMissed = isMissedMilestone(entry.levantate, entry.currentWeek, TRACKING_TARGET_WEEKS.levantate);
+      const restauracionMissed = isMissedMilestone(entry.restauracion, entry.currentWeek, TRACKING_TARGET_WEEKS.restauracion);
       const outsideCohort = !entry.noted && (entry.levantate || entry.restauracion || cycleClosed);
       const complete = entry.noted && entry.levantate && entry.restauracion && cycleClosed;
       const pendingSteps = [];
-      if (!entry.noted) pendingSteps.push('Anotar');
-      if (!entry.levantate) pendingSteps.push('Levántate');
-      if (!entry.restauracion) pendingSteps.push('Restauración');
+      const missedSteps = [];
+      if (!entry.noted) {
+        if (notedMissed) missedSteps.push('Anotar');
+        pendingSteps.push(notedMissed ? 'Anotar (fuera de tiempo)' : 'Anotar');
+      }
+      if (!entry.levantate) {
+        if (levantateMissed) missedSteps.push('Levántate');
+        pendingSteps.push(levantateMissed ? 'Levántate (no lo hizo)' : 'Levántate');
+      }
+      if (!entry.restauracion) {
+        if (restauracionMissed) missedSteps.push('Restauración');
+        pendingSteps.push(restauracionMissed ? 'Restauración (no lo hizo)' : 'Restauración');
+      }
       if (!cycleClosed) pendingSteps.push('Cierre semana 16');
       let statusKey = 'pending';
       let statusLabel = 'Pendiente';
       let statusDetail = pendingSteps.length ? `Pendiente: ${pendingSteps.join(', ')}` : 'Sin pendientes detectados.';
       if (complete) { statusKey = 'complete'; statusLabel = 'Trayecto completo'; }
       else if (outsideCohort) { statusKey = 'outside'; statusLabel = 'Sin cohorte inicial'; }
+      else if (missedSteps.length) {
+        statusKey = 'missed';
+        statusLabel = 'Atrasado';
+      }
       else if (entry.noted && (entry.levantate || entry.restauracion || cycleClosed)) {
         statusKey = 'progress';
         statusLabel = cycleClosed ? 'Cierre parcial' : 'En seguimiento';
@@ -152,6 +190,8 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
         statusDetail = 'Cohorte anotada y hitos principales cubiertos dentro del ciclo.';
       } else if (outsideCohort) {
         statusDetail = 'Aparece en hitos del proceso, pero no viene de la cohorte anotada.';
+      } else if (missedSteps.length) {
+        statusDetail = `No completó a tiempo: ${missedSteps.join(', ')}`;
       } else if (entry.noted && (entry.levantate || entry.restauracion || cycleClosed)) {
         statusDetail = cycleClosed
           ? `Cerró ciclo, pero le faltó: ${pendingSteps.filter((step) => step !== 'Cierre semana 16').join(', ') || 'revisión manual'}`
@@ -165,6 +205,10 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
         cycleClosed,
         outsideCohort,
         complete,
+        notedMissed,
+        levantateMissed,
+        restauracionMissed,
+        missedSteps,
         pendingSteps,
         statusKey,
         statusLabel,
@@ -173,7 +217,7 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
     })
     .filter((entry) => entry.noted || entry.levantate || entry.restauracion || entry.cycleClosed)
     .sort((left, right) => {
-      const w = { complete: 4, progress: 3, outside: 2, pending: 1 };
+      const w = { complete: 5, missed: 4, progress: 3, outside: 2, pending: 1 };
       const diff = (w[right.statusKey] || 0) - (w[left.statusKey] || 0);
       if (diff !== 0) return diff;
       return String(right.lastReportDate || '').localeCompare(String(left.lastReportDate || ''));
