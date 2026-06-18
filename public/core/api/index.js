@@ -1,4 +1,7 @@
-export const API_BASE_URL = window.location.origin;
+const runtimeApiBase = String(window.REPORTE_API_BASE_URL || '').trim();
+const normalizedRuntimeApiBase = runtimeApiBase.replace(/\/$/, '');
+
+export const API_BASE_URL = normalizedRuntimeApiBase || window.location.origin;
 
 import { restoreStoredSession } from '../auth/index.js';
 
