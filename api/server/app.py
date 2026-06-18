@@ -237,11 +237,37 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="")
     initialize_database()
 
+    cors_allowed_origins = {
+        origin.strip().rstrip("/")
+        for origin in [
+            os.environ.get("CORS_ALLOW_ORIGIN", ""),
+            "https://reporte-rcm.onrender.com",
+            "http://127.0.0.1:8090",
+            "http://localhost:8090",
+        ]
+        if origin and origin.strip()
+    }
+
+    def apply_api_cors(response: Response) -> Response:
+        origin = str(request.headers.get("Origin") or "").strip().rstrip("/")
+        if origin and origin in cors_allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Acting-Person-Id"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        return response
+
+    @app.before_request
+    def handle_api_preflight() -> Response | None:
+        if request.method == "OPTIONS" and request.path.startswith("/api/"):
+            return apply_api_cors(Response(status=204))
+        return None
+
     @app.after_request
     def disable_local_static_cache(response: Response) -> Response:
-        if request.method not in {"GET", "HEAD"}:
-            return response
         if request.path.startswith("/api/"):
+            return apply_api_cors(response)
+        if request.method not in {"GET", "HEAD"}:
             return response
 
         host = str(request.host or "").lower()
