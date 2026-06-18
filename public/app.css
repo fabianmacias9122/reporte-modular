@@ -64,12 +64,11 @@ body.app-fixed {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(10, 10, 10, 0.9);
+  background: #0a0a0a;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
-  backdrop-filter: blur(2px);
 }
 
 .login-overlay.is-hidden {
