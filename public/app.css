@@ -2346,11 +2346,12 @@ tr.people-group-header + tr td { border-top: none; }
   margin: 12px 0 14px;
 }
 @media (max-width: 640px) {
+  /* Fallback: keep tab buttons visible on mobile until combo handler is fully live in production. */
   .seg-view-mobile-switch {
-    display: flex;
+    display: none !important;
   }
   .seg-view-tabs {
-    display: none;
+    display: flex !important;
   }
   .seg-access-scope-tabs {
     margin: 10px 0 12px;
