@@ -267,7 +267,7 @@ export function createLoginExperience(options = {}) {
       if (!loginResult) return;
       const user = buildUser(catalogs, loginLookupResult, loginResult);
       setStoredSession(user);
-      hide();
+      setBusy(true, 'Cargando...');
       if (typeof pendingResolver === 'function') {
         pendingResolver(user);
       }

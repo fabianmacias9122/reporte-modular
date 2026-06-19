@@ -27,7 +27,6 @@ function interpolate(template, vars = {}) {
 }
 
 export let currentLang = readStoredLanguage();
-
 applyDocumentLanguage(currentLang);
 
 export function getCurrentLang() {

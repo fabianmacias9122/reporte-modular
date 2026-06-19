@@ -81,6 +81,28 @@ function sanitizeFileName(value) {
 }
 
 export function attachSeguimientoController(root, actions) {
+  root.__seguimientoActions = actions;
+
+  function closeSegTabMenu() {
+    const menu = root.querySelector('#seg-view-mobile-menu');
+    const picker = root.querySelector('#seg-view-mobile-picker');
+    const button = root.querySelector('#seg-view-mobile-button');
+    if (menu) menu.hidden = true;
+    if (picker) picker.classList.remove('is-open');
+    if (button) button.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleSegTabMenu(forceOpen = null) {
+    const menu = root.querySelector('#seg-view-mobile-menu');
+    const picker = root.querySelector('#seg-view-mobile-picker');
+    const button = root.querySelector('#seg-view-mobile-button');
+    if (!menu || !picker || !button) return;
+    const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : menu.hidden;
+    menu.hidden = !shouldOpen;
+    picker.classList.toggle('is-open', shouldOpen);
+    button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+  }
+
   const form = root.querySelector('#seguimiento-scope-form');
   form?.addEventListener('change', async () => {
     await actions.changeFilters(new FormData(form));
@@ -100,24 +122,29 @@ export function attachSeguimientoController(root, actions) {
     actions.toggleShowOffering(Boolean(event.target?.checked));
   });
 
-  root.addEventListener('change', async (event) => {
-    const select = event.target.closest('select[data-action]');
-    if (!select) return;
-    const action = String(select.dataset.action || '');
-    if (action === 'change-tab-select') {
-      actions.changeTab(String(select.value || ''));
-      return;
-    }
-    if (action === 'change-metas-cell') {
-      await actions.changeMetasCellFilter(String(select.value || ''));
-    }
-    if (action === 'change-supervisor') {
-      actions.changeSupervisor(String(select.value || ''));
-    }
-    if (action === 'change-supervisor-week') {
-      actions.changeSupervisorWeek(String(select.value || ''));
-    }
-  });
+  if (!root.__seguimientoDelegatedChangeBound) {
+    root.addEventListener('change', async (event) => {
+      const select = event.target.closest('select[data-action]');
+      if (!select) return;
+      const currentActions = root.__seguimientoActions;
+      if (!currentActions) return;
+      const action = String(select.dataset.action || '');
+      if (action === 'change-tab-select') {
+        currentActions.changeTab(String(select.value || ''));
+        return;
+      }
+      if (action === 'change-metas-cell') {
+        await currentActions.changeMetasCellFilter(String(select.value || ''));
+      }
+      if (action === 'change-supervisor') {
+        currentActions.changeSupervisor(String(select.value || ''));
+      }
+      if (action === 'change-supervisor-week') {
+        currentActions.changeSupervisorWeek(String(select.value || ''));
+      }
+    });
+    root.__seguimientoDelegatedChangeBound = true;
+  }
 
   const previewDialog = root.querySelector('#seguimiento-report-preview-dialog');
   previewDialog?.addEventListener('close', () => {
@@ -150,105 +177,139 @@ export function attachSeguimientoController(root, actions) {
   root.querySelector('#seguimiento-control-detail-done-btn')?.addEventListener('click', () => {
     actions.closeControlDetail();
   });
+  if (!root.__seguimientoDelegatedClickBound) {
+    root.addEventListener('click', async (event) => {
+      const currentActions = root.__seguimientoActions;
+      if (!currentActions) return;
+      const picker = root.querySelector('#seg-view-mobile-picker');
+      if (picker && !picker.contains(event.target)) {
+        closeSegTabMenu();
+      }
 
-  root.addEventListener('click', async (event) => {
-    const button = event.target.closest('button[data-action]');
-    if (!button) return;
-    const action = String(button.dataset.action || '');
-    if (action === 'select-card-detail') {
-      await actions.selectCardDetail(String(button.dataset.cardKey || ''));
-      return;
-    }
-    if (action === 'change-tab') {
-      actions.changeTab(String(button.dataset.tab || ''));
-      return;
-    }
-    if (action === 'change-access-scope') {
-      actions.changeAccessScope(String(button.dataset.scope || ''));
-      return;
-    }
-    if (action === 'change-week-offset') {
-      actions.changeWeekOffset(String(button.dataset.weekoff || '-1'));
-      return;
-    }
-    if (action === 'change-dashboard-time-scope') {
-      actions.changeDashboardTimeScope(String(button.dataset.scope || 'week'));
-      return;
-    }
-    if (action === 'change-dashboard-attendance-tab') {
-      actions.changeDashboardAttendanceTab(String(button.dataset.tab || 'hermanos'));
-      return;
-    }
-    if (action === 'change-totals-scope') {
-      actions.changeTotalsScope(String(button.dataset.scope || 'cell'));
-      return;
-    }
-    if (action === 'goto-cell') {
-      actions.gotoCell(String(button.dataset.cell || ''));
-      return;
-    }
-    if (action === 'view-report') {
-      await actions.selectReportDetail(String(button.dataset.cardKey || ''), String(button.dataset.id || ''));
-      return;
-    }
-    if (action === 'open-supervisor-report') {
-      await actions.openSupervisorReport(String(button.dataset.id || ''));
-      return;
-    }
-    if (action === 'open-control-detail') {
-      actions.openControlDetail(String(button.dataset.controlKey || ''));
-      return;
-    }
-    if (action === 'submit-approval-action') {
-      await actions.submitApprovalAction(
-        String(button.dataset.approvalAction || ''),
-        String(button.dataset.sector || ''),
-        String(button.dataset.week || ''),
-      );
-      return;
-    }
-    if (action === 'download-supervisor-capture') {
-      const capture = button.closest('.sup-capture');
-      const sector = capture?.dataset.supSector || 'supervisor';
-      const week = capture?.dataset.supWeek || '';
-      await downloadElementAsPng(capture, `reporte-${sanitizeFileName(sector)}-S${week}.png`);
-      return;
-    }
-    if (action === 'share-supervisor-capture') {
-      const capture = button.closest('.sup-capture');
-      const sector = capture?.dataset.supSector || 'supervisor';
-      const week = capture?.dataset.supWeek || '';
-      const payload = typeof actions.getSupervisorSharePayload === 'function'
-        ? actions.getSupervisorSharePayload()
-        : null;
-      await shareElementWithText(
-        capture,
-        payload?.text || '',
-        payload?.filename || `reporte-${sanitizeFileName(sector)}-S${week}.png`,
-      );
-      return;
-    }
-    if (action === 'download-preview-report') {
-      const previewBody = root.querySelector('#seguimiento-report-preview-dialog .preview-dialog-body');
-      const payload = typeof actions.getPreviewSharePayload === 'function'
-        ? actions.getPreviewSharePayload()
-        : null;
-      await downloadElementAsPng(previewBody, payload?.filename || 'reporte.png');
-      return;
-    }
-    if (action === 'share-preview-report') {
-      const previewBody = root.querySelector('#seguimiento-report-preview-dialog .preview-dialog-body');
-      const payload = typeof actions.getPreviewSharePayload === 'function'
-        ? actions.getPreviewSharePayload()
-        : null;
-      await shareElementWithText(previewBody, payload?.text || '', payload?.filename || 'reporte.png');
-      return;
-    }
-    if (action === 'new-report-for-cell') {
-      await actions.openCapture({
-        cellNumber: String(button.dataset.cell || ''),
-        week: String(button.dataset.week || ''),
-      });
-    }
-  });
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      const action = String(button.dataset.action || '');
+      if (action === 'toggle-tab-menu') {
+        toggleSegTabMenu();
+        return;
+      }
+      if (action === 'change-tab-menu') {
+        closeSegTabMenu();
+        currentActions.changeTab(String(button.dataset.tab || ''));
+        return;
+      }
+      if (action === 'select-card-detail') {
+        await currentActions.selectCardDetail(String(button.dataset.cardKey || ''));
+        return;
+      }
+      if (action === 'change-tab') {
+        currentActions.changeTab(String(button.dataset.tab || ''));
+        return;
+      }
+      if (action === 'change-access-scope') {
+        currentActions.changeAccessScope(String(button.dataset.scope || ''));
+        return;
+      }
+      if (action === 'change-week-offset') {
+        currentActions.changeWeekOffset(String(button.dataset.weekoff || '-1'));
+        return;
+      }
+      if (action === 'change-dashboard-time-scope') {
+        currentActions.changeDashboardTimeScope(String(button.dataset.scope || 'week'));
+        return;
+      }
+      if (action === 'change-dashboard-attendance-tab') {
+        currentActions.changeDashboardAttendanceTab(String(button.dataset.tab || 'hermanos'));
+        return;
+      }
+      if (action === 'toggle-dashboard-summary-cards') {
+        currentActions.toggleDashboardSummaryCards();
+        return;
+      }
+      if (action === 'toggle-metas-summary-cards') {
+        currentActions.toggleMetasSummaryCards();
+        return;
+      }
+      if (action === 'change-totals-scope') {
+        currentActions.changeTotalsScope(String(button.dataset.scope || 'cell'));
+        return;
+      }
+      if (action === 'goto-cell') {
+        currentActions.gotoCell(String(button.dataset.cell || ''));
+        return;
+      }
+      if (action === 'view-report') {
+        await currentActions.selectReportDetail(String(button.dataset.cardKey || ''), String(button.dataset.id || ''));
+        return;
+      }
+      if (action === 'open-capture') {
+        await currentActions.openCapture({
+          cellNumber: String(button.dataset.cell || ''),
+          week: String(button.dataset.week || ''),
+        });
+        return;
+      }
+      if (action === 'preview-share') {
+        await currentActions.getPreviewSharePayload?.();
+        return;
+      }
+      if (action === 'open-control-detail') {
+        currentActions.openControlDetail(String(button.dataset.controlKey || ''));
+        return;
+      }
+      if (action === 'submit-approval-action') {
+        await currentActions.submitApprovalAction(
+          String(button.dataset.approvalAction || ''),
+          String(button.dataset.sector || ''),
+          String(button.dataset.week || ''),
+        );
+        return;
+      }
+      if (action === 'download-supervisor-capture') {
+        const capture = button.closest('.sup-capture');
+        const sector = capture?.dataset.supSector || 'supervisor';
+        const week = capture?.dataset.supWeek || '';
+        await downloadElementAsPng(capture, `reporte-${sanitizeFileName(sector)}-S${week}.png`);
+        return;
+      }
+      if (action === 'share-supervisor-capture') {
+        const capture = button.closest('.sup-capture');
+        const sector = capture?.dataset.supSector || 'supervisor';
+        const week = capture?.dataset.supWeek || '';
+        const payload = typeof currentActions.getSupervisorSharePayload === 'function'
+          ? currentActions.getSupervisorSharePayload()
+          : null;
+        await shareElementWithText(
+          capture,
+          payload?.text || '',
+          payload?.filename || `reporte-${sanitizeFileName(sector)}-S${week}.png`,
+        );
+        return;
+      }
+      if (action === 'download-preview-report') {
+        const previewBody = root.querySelector('#seguimiento-report-preview-dialog .preview-dialog-body');
+        const payload = typeof currentActions.getPreviewSharePayload === 'function'
+          ? currentActions.getPreviewSharePayload()
+          : null;
+        await downloadElementAsPng(previewBody, payload?.filename || 'reporte.png');
+        return;
+      }
+      if (action === 'share-preview-report') {
+        const previewBody = root.querySelector('#seguimiento-report-preview-dialog .preview-dialog-body');
+        const payload = typeof currentActions.getPreviewSharePayload === 'function'
+          ? currentActions.getPreviewSharePayload()
+          : null;
+        await shareElementWithText(previewBody, payload?.text || '', payload?.filename || 'reporte.png');
+        return;
+      }
+      if (action === 'new-report-for-cell') {
+        await currentActions.openCapture({
+          cellNumber: String(button.dataset.cell || ''),
+          week: String(button.dataset.week || ''),
+        });
+        return;
+      }
+    });
+    root.__seguimientoDelegatedClickBound = true;
+  }
 }

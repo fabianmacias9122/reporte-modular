@@ -1,6 +1,6 @@
 import { attachSeguimientoController } from './controllers/seguimiento.controller.v2.js';
 import { request } from '../../core/api/index.js';
-import { getRcmWeekInfo } from '../../core/rcm/index.js';
+import { getRcmWeekInfo, getRcmWeeksDefaultClone } from '../../core/rcm/index.js';
 import { fetchCatalogs } from '../catalogos/data/catalogos.repository.js';
 import { getCellMembers } from '../catalogos/models/catalogs-state.js';
 import { fetchSeguimientoReport, fetchSeguimientoReports, fetchFriendTracking } from './data/seguimiento.repository.js';
@@ -85,6 +85,31 @@ function formatTrackingRangeLabel(start, end) {
   return `${startLabel} — ${endLabel}`;
 }
 
+const DEFAULT_RCM_WEEKS_BY_NUMBER = new Map(
+  getRcmWeeksDefaultClone().map((entry) => [Number(entry.week || 0), { ...entry, isEventWeek: Boolean(entry?.event) }]),
+);
+
+function getDefaultRcmWeekInfo(weekNumber) {
+  return DEFAULT_RCM_WEEKS_BY_NUMBER.get(Number(weekNumber || 0)) || null;
+}
+
+function getReportRcmSnapshot(report) {
+  const snapshot = report?.formData?.rcmSnapshot;
+  if (snapshot && typeof snapshot === 'object') {
+    return {
+      week: Number(snapshot.week || 0),
+      phase: String(snapshot.phase || '').trim(),
+      phaseLabel: String(snapshot.phaseLabel || '').trim(),
+      verb: String(snapshot.verb || '').trim(),
+      event: String(snapshot.event || '').trim(),
+      rcmKey: String(snapshot.rcmKey || '').trim(),
+      isEventWeek: Boolean(snapshot.isEventWeek || snapshot.event),
+    };
+  }
+  const weekNumber = parseInt(String(report?.week || report?.formData?.week || '0'), 10) || 0;
+  return getDefaultRcmWeekInfo(weekNumber);
+}
+
 function buildProcessControlEntries(scopedReports = [], friends = []) {
   const friendsByName = new Map(
     (Array.isArray(friends) ? friends : []).map((friend) => [normalizeVisitorName(friend.name), friend]),
@@ -96,7 +121,7 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
     const sector = String(report?.sector || report?.formData?.sector || '').trim();
     const reportDate = String(report?.reportDate || report?.formData?.reportDate || '').trim();
     const weekNumber = parseInt(String(report?.week || report?.formData?.week || '0'), 10) || 0;
-    const weekMeta = getRcmWeekInfo(weekNumber);
+    const reportSnapshot = getReportRcmSnapshot(report);
 
     normalizeVisitors(report?.formData?.visitors).forEach((visitor) => {
       if (normalizeVisitorKind(visitor.kind) !== 'amigo') return;
@@ -129,14 +154,14 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
       previous.totalReports += 1;
       if (visitor.reachAttended) previous.reachCount += 1;
       if (visitor.sundayAttended) previous.sundayCount += 1;
-      if (weekMeta?.rcmKey === 'levantate' && visitor.eventAttended) {
+      if (reportSnapshot?.rcmKey === 'levantate' && visitor.eventAttended) {
         previous.levantate = true;
         if (!previous.levantateWeek || (weekNumber && weekNumber < previous.levantateWeek)) {
           previous.levantateWeek = weekNumber;
           previous.levantateDate = reportDate;
         }
       }
-      if (weekMeta?.rcmKey === 'restauracion' && visitor.eventAttended) {
+      if (reportSnapshot?.rcmKey === 'restauracion' && visitor.eventAttended) {
         previous.restauracion = true;
         if (!previous.restauracionWeek || (weekNumber && weekNumber < previous.restauracionWeek)) {
           previous.restauracionWeek = weekNumber;

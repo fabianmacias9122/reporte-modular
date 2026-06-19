@@ -51,6 +51,10 @@ function renderControlDetailDialog(scope, entry) {
     ? `${entry.processCount} ciclos en histórico`
     : `${entry.processCount || 0} ciclo${entry.processCount === 1 ? ' en histórico' : 's'}`;
   const missingText = entry.pendingSteps?.length ? entry.pendingSteps.join(', ') : 'Ninguno';
+  const heroSummaryText = entry.statusKey === 'missed'
+    ? 'Tiene hitos vencidos dentro del proceso.'
+    : `Le falta: ${missingText}`;
+  const detailReadingText = entry.statusDetail || '—';
   const outcomeText = entry.backendOutcome || entry.backendStatus
     ? getFriendTrackingBackendOutcomeLabel(entry.backendOutcome, entry.backendStatus)
     : entry.cycleClosed
@@ -66,23 +70,26 @@ function renderControlDetailDialog(scope, entry) {
     {
       label: entry.lateEntry ? 'Anotado tardío' : 'Anotado',
       done: entry.noted,
+      missed: entry.notedMissed,
       when: entry.noted
         ? `Sem. ${entry.notedWeek || '?'}${entry.notedDate ? ` · ${formatTrackingDateLabel(entry.notedDate)}` : ''}`
-        : 'Pendiente',
+        : entry.notedMissed ? 'No lo hizo en tiempo' : 'Pendiente',
     },
     {
       label: 'Levántate',
       done: entry.levantate,
+      missed: entry.levantateMissed,
       when: entry.levantate
         ? `Sem. ${entry.levantateWeek || '?'}${entry.levantateDate ? ` · ${formatTrackingDateLabel(entry.levantateDate)}` : ''}`
-        : 'Pendiente',
+        : entry.levantateMissed ? 'No asistió en su semana' : 'Pendiente',
     },
     {
       label: 'Restauración',
       done: entry.restauracion,
+      missed: entry.restauracionMissed,
       when: entry.restauracion
         ? `Sem. ${entry.restauracionWeek || '?'}${entry.restauracionDate ? ` · ${formatTrackingDateLabel(entry.restauracionDate)}` : ''}`
-        : 'Pendiente',
+        : entry.restauracionMissed ? 'No asistió en su semana' : 'Pendiente',
     },
     {
       label: 'Cierre semana 16',
@@ -99,6 +106,8 @@ function renderControlDetailDialog(scope, entry) {
     ? 'is-complete'
     : entry.statusKey === 'outside'
       ? 'is-outside'
+      : entry.statusKey === 'missed'
+        ? 'is-missed'
       : entry.statusKey === 'progress'
         ? 'is-progress'
         : 'is-pending';
@@ -121,7 +130,7 @@ function renderControlDetailDialog(scope, entry) {
                 <strong class="friend-control-modal-name">${escapeHtml(entry.name)}</strong>
                 <span class="friend-process-status friend-process-status-control ${statusClass}">${escapeHtml(entry.statusLabel)}</span>
               </div>
-              <p class="friend-control-modal-summary">Le falta: ${escapeHtml(missingText)}</p>
+              <p class="friend-control-modal-summary">${escapeHtml(heroSummaryText)}</p>
             </div>
             <div class="friend-control-modal-tags">
               ${(entry.processCount > 1 ? `<span class="friend-control-cycle-badge is-repeat">${escapeHtml(cycleText)}</span>` : `<span class="friend-control-cycle-badge">${escapeHtml(cycleText)}</span>`)}
@@ -130,22 +139,13 @@ function renderControlDetailDialog(scope, entry) {
             </div>
           </section>
 
-          <section class="friend-control-modal-section">
-            <div class="friend-control-milestones">
-              ${[
-                { label: entry.noted ? (entry.lateEntry ? 'Anotado tardío' : 'Anotado') : 'No anotado', accent: entry.noted ? 'is-done' : 'is-off' },
-                { label: 'Levántate', accent: entry.levantate ? 'is-done' : 'is-off' },
-                { label: 'Restauración', accent: entry.restauracion ? 'is-done' : 'is-off' },
-                { label: 'Cierre sem. 16', accent: entry.cycleClosed ? 'is-done' : 'is-off' },
-              ].map((milestone) => `<span class="friend-control-milestone ${milestone.accent}">${escapeHtml(milestone.label)}</span>`).join('')}
-            </div>
-          </section>
-
           <section class="friend-control-modal-grid">
+            ${entry.statusKey === 'missed' ? '' : `
             <div class="friend-control-detail-card">
               <span class="friend-control-detail-label">Lectura</span>
-              <strong class="friend-control-detail-value">${escapeHtml(entry.statusDetail || '—')}</strong>
+              <strong class="friend-control-detail-value">${escapeHtml(detailReadingText)}</strong>
             </div>
+            `}
             <div class="friend-control-detail-card">
               <span class="friend-control-detail-label">Salida backend</span>
               <strong class="friend-control-detail-value">${escapeHtml(outcomeText)}</strong>
@@ -154,7 +154,7 @@ function renderControlDetailDialog(scope, entry) {
               <span class="friend-control-detail-label">Fechas clave</span>
               <div class="friend-control-timeline">
                 ${milestoneTimeline.map((milestone) => `
-                  <div class="friend-control-timeline-row ${milestone.done ? 'is-done' : 'is-off'}">
+                  <div class="friend-control-timeline-row ${milestone.done ? 'is-done' : milestone.missed ? 'is-missed' : 'is-off'}">
                     <span class="friend-control-timeline-step">${escapeHtml(milestone.label)}</span>
                     <span class="friend-control-timeline-when">${escapeHtml(milestone.when)}</span>
                   </div>
@@ -242,12 +242,20 @@ function renderWeekChips(card) {
 function renderSegTabs(state) {
   const tabs = Array.isArray(state.segTabs) ? state.segTabs : [];
   if (!tabs.length) return '';
+  const activeTab = tabs.find((tab) => tab.key === state.activeTab) || tabs[0];
   return `
     <div class="seg-view-mobile-switch">
-      <label class="seg-view-mobile-label" for="seg-view-mobile-select">Vista</label>
-      <select id="seg-view-mobile-select" class="seguimiento-filter-select seg-view-mobile-select" data-action="change-tab-select" aria-label="Seleccionar vista de seguimiento">
-        ${tabs.map((tab) => `<option value="${escapeHtml(tab.key)}"${tab.key === state.activeTab ? ' selected' : ''}>${escapeHtml(tab.label)}</option>`).join('')}
-      </select>
+      <label class="seg-view-mobile-label" for="seg-view-mobile-button">Vista</label>
+      <div class="seg-view-mobile-picker" id="seg-view-mobile-picker">
+        <button type="button" id="seg-view-mobile-button" class="seg-view-mobile-button" data-action="toggle-tab-menu" aria-haspopup="listbox" aria-expanded="false">
+          <span id="seg-view-mobile-button-text">${escapeHtml(activeTab?.label || '')}</span>
+        </button>
+        <div id="seg-view-mobile-menu" class="seg-view-mobile-menu" role="listbox" hidden>
+          ${tabs.map((tab) => `
+            <button type="button" class="seg-view-mobile-option${tab.key === state.activeTab ? ' is-active' : ''}" data-action="change-tab-menu" data-tab="${escapeHtml(tab.key)}" role="option" aria-selected="${tab.key === state.activeTab ? 'true' : 'false'}">${escapeHtml(tab.label)}</button>
+          `).join('')}
+        </div>
+      </div>
     </div>
     <div class="seg-view-tabs" id="seg-view-tab-bar">
       ${tabs.map((tab) => `
@@ -257,28 +265,63 @@ function renderSegTabs(state) {
   `;
 }
 
+function renderScopeState(tab, wrapperClass = 'rcs-scope-bridge') {
+  if (!tab) return '';
+  return `
+    <div class="${escapeHtml(wrapperClass)}">
+      <div class="dashboard-scope-state rcs-scope-state" role="status" aria-live="polite">
+        <span class="dashboard-scope-state-label">${escapeHtml(tab.label)}</span>
+        ${tab.sublabel ? `<span class="dashboard-scope-state-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderScopedPanelBundle(scopeMarkup, panelMarkup, bundleClass = '') {
+  if (!panelMarkup) return '';
+  if (!scopeMarkup) return panelMarkup;
+  return `
+    <div class="seg-scope-panel-bundle full-width${bundleClass ? ` ${escapeHtml(bundleClass)}` : ''}">
+      ${scopeMarkup}
+      ${panelMarkup}
+    </div>
+  `;
+}
+
+function getSummaryPreviewCount() {
+  if (typeof window === 'undefined') return 4;
+  const width = Number(window.innerWidth || 0);
+  if (width <= 520) return 2;
+  if (width <= 900) return 3;
+  if (width <= 1320) return 4;
+  return 5;
+}
+
+function getVisibleSummaryCards(cards, showAllCards) {
+  const safeCards = Array.isArray(cards) ? cards : [];
+  const previewCount = Math.max(1, getSummaryPreviewCount());
+  const previewCards = safeCards.slice(0, previewCount);
+  const visibleCards = showAllCards ? safeCards : previewCards;
+  const hiddenCount = Math.max(0, safeCards.length - previewCards.length);
+  return { visibleCards, hiddenCount };
+}
+
 function renderScopeTabs(state) {
   const tabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
   if (!tabs.length || state.activeTab !== 'goals') return '';
   if (tabs.length === 1) {
-    const tab = tabs[0];
-    return `
-      <div class="dashboard-scope-tabs seg-access-scope-tabs is-single-scope">
-        <div class="dashboard-scope-state" role="status" aria-live="polite">
-          <span class="dashboard-scope-state-label">${escapeHtml(tab.label)}</span>
-          ${tab.sublabel ? `<span class="dashboard-scope-state-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </div>
-      </div>
-    `;
+    return '';
   }
   return `
-    <div class="dashboard-scope-tabs seg-access-scope-tabs" role="tablist">
-      ${tabs.map((tab) => `
-        <button type="button" class="dashboard-scope-tab${tab.key === state.accessScope ? ' is-active' : ''}" data-action="change-access-scope" data-scope="${escapeHtml(tab.key)}" role="tab" aria-selected="${tab.key === state.accessScope}">
-          ${escapeHtml(tab.label)}
-          ${tab.sublabel ? `<span class="scope-tab-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </button>
-      `).join('')}
+    <div class="rcs-scope-bridge seg-scope-panel-bridge goals-scope-tabs-bridge">
+      <div id="seg-access-scope-tabs" class="dashboard-scope-tabs rcs-scope-tabs seg-access-scope-tabs" role="tablist">
+        ${tabs.map((tab) => `
+          <button type="button" class="dashboard-scope-tab${tab.key === state.accessScope ? ' is-active' : ''}" data-action="change-access-scope" data-scope="${escapeHtml(tab.key)}" role="tab" aria-selected="${tab.key === state.accessScope}">
+            ${escapeHtml(tab.label)}
+            ${tab.sublabel ? `<span class="scope-tab-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
+          </button>
+        `).join('')}
+      </div>
     </div>
   `;
 }
@@ -287,15 +330,7 @@ function renderIntegratedScopeTabs(state) {
   const tabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
   if (!tabs.length || state.activeTab !== 'seguimiento') return '';
   if (tabs.length === 1) {
-    const tab = tabs[0];
-    return `
-      <div class="rcs-scope-bridge">
-        <div class="dashboard-scope-state rcs-scope-state" role="status" aria-live="polite">
-          <span class="dashboard-scope-state-label">${escapeHtml(tab.label)}</span>
-          ${tab.sublabel ? `<span class="dashboard-scope-state-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </div>
-      </div>
-    `;
+    return renderScopeState(tabs[0]);
   }
   return `
     <div class="rcs-scope-bridge">
@@ -400,6 +435,7 @@ function renderMetasPanel(state) {
   const goalProgress = metas?.goalProgress || {};
   const scopedCells = Array.isArray(state.metasCells) ? state.metasCells : [];
   const selectedCell = String(state.metasCellFilter || '');
+  const showCellFilter = state.accessScope !== 'cell' && scopedCells.length > 1;
   const controlEntries = Array.isArray(state.processControlEntries) ? state.processControlEntries : [];
   const controlDetailEntry = state.controlDetailEntry || null;
 
@@ -422,6 +458,7 @@ function renderMetasPanel(state) {
       accent: 'accent-faith friend-summary-card-key',
     },
   ];
+  const metasSummaryView = getVisibleSummaryCards(summaryCards, Boolean(state.showAllMetasSummaryCards));
 
   const goalItems = [
     { label: 'Levántate', goal: Number(goals.levantateGoal) || 0, achieved: Number(goalProgress.levantate) || 0 },
@@ -434,23 +471,25 @@ function renderMetasPanel(state) {
   const pendingCount = controlEntries.filter((e) => e.noted && !e.complete).length;
   const repeatCount = controlEntries.filter((e) => (e.processCount || 0) > 1).length;
   const outsideCohortCount = controlEntries.filter((e) => e.outsideCohort).length;
+  const controlCellNumbers = [...new Set(controlEntries.map((entry) => String(entry.cellNumber || '').trim()).filter(Boolean))];
+  const shouldGroupControlByCell = state.accessScope !== 'cell' && controlCellNumbers.length > 1;
 
-  const renderControlCard = (entry) => {
+  const renderControlCard = (entry, options = {}) => {
     const statusClass = entry.statusKey === 'complete' ? 'is-complete'
       : entry.statusKey === 'outside' ? 'is-outside'
+      : entry.statusKey === 'missed' ? 'is-missed'
       : entry.statusKey === 'progress' ? 'is-progress'
       : 'is-pending';
     const cohortLabel = entry.noted ? (entry.lateEntry ? 'Anotado tardío' : 'Anotado') : 'No anotado';
     const milestoneItems = [
-      { label: cohortLabel, accent: entry.noted ? 'is-done' : 'is-off' },
-      { label: 'Levántate', accent: entry.levantate ? 'is-done' : 'is-off' },
-      { label: 'Restauración', accent: entry.restauracion ? 'is-done' : 'is-off' },
+      { label: cohortLabel, accent: entry.noted ? 'is-done' : entry.notedMissed ? 'is-missed' : 'is-off' },
+      { label: 'Levántate', accent: entry.levantate ? 'is-done' : entry.levantateMissed ? 'is-missed' : 'is-off' },
+      { label: 'Restauración', accent: entry.restauracion ? 'is-done' : entry.restauracionMissed ? 'is-missed' : 'is-off' },
       { label: 'Cierre sem. 16', accent: entry.cycleClosed ? 'is-done' : 'is-off' },
     ];
-    const missingText = entry.pendingSteps?.length ? entry.pendingSteps.join(', ') : 'Ninguno';
     const cycleText = entry.processCount > 1 ? `${entry.processCount} ciclos en histórico` : `${entry.processCount || 0} ciclo${entry.processCount === 1 ? ' en histórico' : 's'}`;
     const dateRange = formatTrackingRangeLabel(entry.firstReportDate, entry.lastReportDate);
-    const cellBadge = showCellBadge && entry.cellNumber
+    const cellBadge = options.showCellBadge && entry.cellNumber
       ? `<span class="friend-process-cell-badge friend-process-footer-badge">Célula ${escapeHtml(String(entry.cellNumber))}</span>`
       : '';
     return `
@@ -464,7 +503,6 @@ function renderMetasPanel(state) {
             <span class="friend-process-status friend-process-status-control ${statusClass}">${escapeHtml(entry.statusLabel)}</span>
           </div>
           <div class="friend-control-summary">
-            <div class="friend-control-summary-main">${entry.complete ? 'Trayecto cubierto' : `Le falta: ${escapeHtml(missingText)}`}</div>
             <div class="friend-control-summary-sub">Alcance ${escapeHtml(String(entry.reachCount || 0))} · Culto ${escapeHtml(String(entry.sundayCount || 0))} · Semana máx ${escapeHtml(String(entry.currentWeek || 0))}</div>
           </div>
           <div class="friend-control-milestones">
@@ -482,38 +520,93 @@ function renderMetasPanel(state) {
     `;
   };
 
+  const renderControlContent = () => {
+    if (!controlEntries.length) {
+      return '<p class="empty-state" style="padding:16px 0">Sin amigos en el proceso para este cuatrimestre.</p>';
+    }
+    if (!shouldGroupControlByCell) {
+      const showGroupedCellBadge = state.accessScope !== 'cell' && controlCellNumbers.length === 1;
+      return controlEntries.map((entry) => renderControlCard(entry, { showCellBadge: showGroupedCellBadge })).join('');
+    }
+
+    const groupedControl = new Map();
+    controlEntries.forEach((entry) => {
+      const cellNumber = String(entry.cellNumber || '').trim() || 'Sin célula';
+      if (!groupedControl.has(cellNumber)) groupedControl.set(cellNumber, []);
+      groupedControl.get(cellNumber).push(entry);
+    });
+
+    const orderedGroupedControl = [...groupedControl.entries()].sort(([leftCell], [rightCell]) => {
+      const leftIsNumeric = /^\d+$/.test(leftCell);
+      const rightIsNumeric = /^\d+$/.test(rightCell);
+      if (leftIsNumeric && rightIsNumeric) return Number(leftCell) - Number(rightCell);
+      if (leftIsNumeric) return -1;
+      if (rightIsNumeric) return 1;
+      return leftCell.localeCompare(rightCell, 'es', { numeric: true, sensitivity: 'base' });
+    });
+
+    return orderedGroupedControl.map(([cellNumber, items]) => {
+      const label = /^\d+$/.test(cellNumber) ? `Célula ${cellNumber}` : cellNumber;
+      const subtitle = `${items.length} ${items.length === 1 ? 'caso' : 'casos'}`;
+      return `
+        <details class="friend-process-group friend-control-group">
+          <summary class="friend-process-group-summary">
+            <div class="friend-process-group-heading">
+              <strong class="friend-process-group-title">${escapeHtml(label)}</strong>
+              <span class="friend-process-group-count">${escapeHtml(subtitle)}</span>
+            </div>
+            <span class="friend-process-group-toggle" aria-hidden="true">Ver</span>
+          </summary>
+          <div class="friend-process-group-grid">
+            ${items.map((entry) => renderControlCard(entry, { showCellBadge: false })).join('')}
+          </div>
+        </details>
+      `;
+    }).join('');
+  };
+
   return `
-    <section class="panel panel-soft full-width" id="friend-tracking-panel">
-      <div class="panel-head">
-        <div>
-          <p class="eyebrow" id="friend-tracking-goals-eyebrow">Meta cuatrimestral</p>
-          <h2 id="friend-tracking-goals-title">${metas ? 'En curso' : 'Objetivos RCM por célula'}${quarterLabel}</h2>
+    <div class="seguimiento-next-shell">
+      <section class="panel panel-soft full-width" id="friend-tracking-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow" id="friend-tracking-goals-eyebrow">Meta cuatrimestral</p>
+            <h2 id="friend-tracking-goals-title">${metas ? 'En curso' : 'Objetivos RCM por célula'}</h2>
+          </div>
+          <div class="friend-tracking-head-tools">
+            ${showCellFilter ? `
+              <select class="form-select friend-tracking-cell-filter-native" data-action="change-metas-cell" style="height:32px;padding:2px 8px;font-size:.85rem" aria-label="Filtrar por célula">
+                <option value="">Vista general</option>
+                ${scopedCells.map((cell) => `<option value="${escapeHtml(String(cell || ''))}"${selectedCell === String(cell || '') ? ' selected' : ''}>Célula ${escapeHtml(String(cell || ''))}</option>`).join('')}
+              </select>
+            ` : ''}
+            ${scope.year && scope.quarter ? `<span class="count-chip">Q${escapeHtml(String(scope.quarter))}/${escapeHtml(String(scope.year))}</span>` : ''}
+          </div>
         </div>
-        <div class="friend-tracking-head-tools">
-          ${scopedCells.length > 1 ? `
-            <select class="form-select friend-tracking-cell-filter-native" data-action="change-metas-cell" style="height:32px;padding:2px 8px;font-size:.85rem" aria-label="Filtrar por célula">
-              <option value="">Vista general</option>
-              ${scopedCells.map((cell) => `<option value="${escapeHtml(String(cell || ''))}"${selectedCell === String(cell || '') ? ' selected' : ''}>Célula ${escapeHtml(String(cell || ''))}</option>`).join('')}
-            </select>
+        ${loading && !metas ? '<p class="empty-state" style="padding:16px 0">Cargando datos…</p>' : ''}
+        ${!loading && !metas ? '<p class="empty-state" style="padding:16px 0">Sin datos para el periodo actual.</p>' : ''}
+        ${metas ? `
+          <div id="friend-tracking-summary-grid" class="summary-grid">
+            ${metasSummaryView.visibleCards.map(({ label, value, hint, accent }) => `
+              <article class="summary-card summary-card-dashboard friend-summary-card ${escapeHtml(accent || '')}">
+                <span class="summary-label">${escapeHtml(label)}</span>
+                <strong class="summary-value">${escapeHtml(value)}</strong>
+                <span class="summary-hint">${escapeHtml(hint)}</span>
+              </article>
+            `).join('')}
+          </div>
+          ${metasSummaryView.hiddenCount ? `
+            <div class="seg-summary-mobile-actions">
+              <button type="button" class="btn-ghost catalog-mobile-more" data-action="toggle-metas-summary-cards" aria-expanded="${state.showAllMetasSummaryCards ? 'true' : 'false'}">${state.showAllMetasSummaryCards ? 'Ver menos' : `Ver ${metasSummaryView.hiddenCount} más`}</button>
+            </div>
           ` : ''}
-          ${scope.year && scope.quarter ? `<span class="count-chip">Q${escapeHtml(String(scope.quarter))}/${escapeHtml(String(scope.year))}</span>` : ''}
-        </div>
-      </div>
-      ${loading && !metas ? '<p class="empty-state" style="padding:16px 0">Cargando datos…</p>' : ''}
-      ${!loading && !metas ? '<p class="empty-state" style="padding:16px 0">Sin datos para el periodo actual.</p>' : ''}
+        ` : ''}
+      </section>
       ${metas ? `
-        <div id="friend-tracking-summary-grid" class="summary-grid">
-          ${summaryCards.map(({ label, value, hint, accent }) => `
-            <article class="summary-card summary-card-dashboard friend-summary-card ${escapeHtml(accent || '')}">
-              <span class="summary-label">${escapeHtml(label)}</span>
-              <strong class="summary-value">${escapeHtml(value)}</strong>
-              <span class="summary-hint">${escapeHtml(hint)}</span>
-            </article>
-          `).join('')}
-        </div>
-        <div class="friend-tracking-layout">
-          <div class="friend-tracking-main">
-            <section class="friend-tracking-card friend-tracking-card-control">
+        <section class="panel panel-soft full-width friend-tracking-detail-panel">
+          <div class="friend-tracking-layout">
+            <div class="friend-tracking-main">
+              <section class="friend-tracking-card friend-tracking-card-control">
               <div class="friend-tracking-card-head friend-tracking-card-head-accent friend-tracking-card-head-gold">
                 <div>
                   <h3>Control del proceso</h3>
@@ -534,45 +627,44 @@ function renderMetasPanel(state) {
                   </span>
                 `).join('')}
               </div>
-              <div class="friend-tracking-friends-grid friend-tracking-control-list">
-                ${controlEntries.length
-                  ? controlEntries.map((entry) => renderControlCard(entry)).join('')
-                  : '<p class="empty-state" style="padding:16px 0">Sin amigos en el proceso para este cuatrimestre.</p>'}
+              <div class="friend-tracking-friends-grid friend-tracking-control-list${shouldGroupControlByCell ? ' is-grouped' : ''}">
+                ${renderControlContent()}
               </div>
-            </section>
+              </section>
+            </div>
+            <aside class="friend-tracking-side">
+              <details class="friend-tracking-card friend-tracking-card-goals friend-tracking-collapse friend-tracking-goals-band" open>
+                <summary class="friend-tracking-card-head friend-tracking-card-head-accent friend-tracking-card-head-green friend-tracking-collapse-head">
+                  <h3>Metas del cuatrimestre</h3>
+                </summary>
+                <div class="friend-tracking-goals-list">
+                  ${goalItems.map(({ label, goal, achieved }) => {
+                    const target = Number(goal) || 0;
+                    const done = Number(achieved) || 0;
+                    const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : (done > 0 ? 100 : 0);
+                    const remaining = Math.max(target - done, 0);
+                    const foot = remaining > 0 ? `Faltan ${remaining}` : 'Meta alcanzada ✓';
+                    return `
+                      <div class="friend-tracking-goal-row friend-tracking-goal-progress-row">
+                        <div class="friend-tracking-goal-topline">
+                          <span class="friend-tracking-goal-label">${escapeHtml(label)}</span>
+                          <strong class="friend-tracking-goal-value">${escapeHtml(String(done))}/${escapeHtml(String(target))}</strong>
+                        </div>
+                        <div class="friend-tracking-goal-bar" aria-hidden="true">
+                          <div class="friend-tracking-goal-fill" style="width:${pct}%"></div>
+                        </div>
+                        <span class="friend-tracking-goal-foot">${escapeHtml(foot)}</span>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </details>
+            </aside>
           </div>
-          <aside class="friend-tracking-side">
-            <details class="friend-tracking-card friend-tracking-card-goals friend-tracking-collapse friend-tracking-goals-band" open>
-              <summary class="friend-tracking-card-head friend-tracking-card-head-accent friend-tracking-card-head-green friend-tracking-collapse-head">
-                <h3>Metas del cuatrimestre</h3>
-              </summary>
-              <div class="friend-tracking-goals-list">
-                ${goalItems.map(({ label, goal, achieved }) => {
-                  const target = Number(goal) || 0;
-                  const done = Number(achieved) || 0;
-                  const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : (done > 0 ? 100 : 0);
-                  const remaining = Math.max(target - done, 0);
-                  const foot = remaining > 0 ? `Faltan ${remaining}` : 'Meta alcanzada ✓';
-                  return `
-                    <div class="friend-tracking-goal-row friend-tracking-goal-progress-row">
-                      <div class="friend-tracking-goal-topline">
-                        <span class="friend-tracking-goal-label">${escapeHtml(label)}</span>
-                        <strong class="friend-tracking-goal-value">${escapeHtml(String(done))}/${escapeHtml(String(target))}</strong>
-                      </div>
-                      <div class="friend-tracking-goal-bar" aria-hidden="true">
-                        <div class="friend-tracking-goal-fill" style="width:${pct}%"></div>
-                      </div>
-                      <span class="friend-tracking-goal-foot">${escapeHtml(foot)}</span>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            </details>
-          </aside>
-        </div>
+        </section>
         ${renderControlDetailDialog(scope, controlDetailEntry)}
       ` : ''}
-    </section>
+    </div>
   `;
 }
 
@@ -580,24 +672,18 @@ function renderDashboardScopeTabs(state) {
   const tabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
   if (!tabs.length || state.activeTab !== 'dashboard') return '';
   if (tabs.length === 1) {
-    const tab = tabs[0];
-    return `
-      <div class="dashboard-scope-tabs is-single-scope">
-        <div class="dashboard-scope-state" role="status" aria-live="polite">
-          <span class="dashboard-scope-state-label">${escapeHtml(tab.label)}</span>
-          ${tab.sublabel ? `<span class="dashboard-scope-state-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </div>
-      </div>
-    `;
+    return renderScopeState(tabs[0], 'rcs-scope-bridge seg-scope-panel-bridge dashboard-scope-bridge');
   }
   return `
-    <div class="dashboard-scope-tabs" role="tablist">
-      ${tabs.map((tab) => `
-        <button type="button" class="dashboard-scope-tab${tab.key === state.accessScope ? ' is-active' : ''}" data-action="change-access-scope" data-scope="${escapeHtml(tab.key)}" role="tab" aria-selected="${tab.key === state.accessScope}">
-          ${escapeHtml(tab.label)}
-          ${tab.sublabel ? `<span class="scope-tab-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
-        </button>
-      `).join('')}
+    <div class="rcs-scope-bridge seg-scope-panel-bridge dashboard-scope-tabs-bridge">
+      <div class="dashboard-scope-tabs rcs-scope-tabs" role="tablist">
+        ${tabs.map((tab) => `
+          <button type="button" class="dashboard-scope-tab${tab.key === state.accessScope ? ' is-active' : ''}" data-action="change-access-scope" data-scope="${escapeHtml(tab.key)}" role="tab" aria-selected="${tab.key === state.accessScope}">
+            ${escapeHtml(tab.label)}
+            ${tab.sublabel ? `<span class="scope-tab-sub">${escapeHtml(tab.sublabel)}</span>` : ''}
+          </button>
+        `).join('')}
+      </div>
     </div>
   `;
 }
@@ -802,6 +888,7 @@ function renderDashboardPanel(state) {
       ],
     },
   ];
+  const dashboardSummaryView = getVisibleSummaryCards(summaryCards, Boolean(state.showAllDashboardSummaryCards));
   const renderAlertRow = (entry) => {
     const badges = (Array.isArray(entry?.events) ? entry.events : []).map((eventEntry) => `
       <span class="absence-event-pill absence-pill-${escapeHtml(String(eventEntry.letter || '').toLowerCase())}${eventEntry.justified ? ' is-justified' : ''}" title="${escapeHtml(eventEntry.streak >= 2 ? `${eventEntry.streak} semanas seguidas` : 'esta semana')}">${escapeHtml(String(eventEntry.letter || ''))}${eventEntry.streak >= 2 ? `<small>${escapeHtml(String(eventEntry.streak))}×</small>` : ''}</span>
@@ -833,7 +920,6 @@ function renderDashboardPanel(state) {
           </div>
           <span id="dashboard-scope-chip" class="panel-tag panel-tag-scope"${data?.scopeLabel ? '' : ' hidden'}>${escapeHtml(data?.scopeLabel || '')}</span>
         </div>
-        ${renderDashboardScopeTabs(state)}
         <div class="dashboard-time-tabs" id="dashboard-time-tabs">
           <button type="button" class="dashboard-time-tab${timeScope === 'week' ? ' is-active' : ''}" data-action="change-dashboard-time-scope" data-scope="week">Semana</button>
           <button type="button" class="dashboard-time-tab${timeScope === 'quarter' ? ' is-active' : ''}" data-action="change-dashboard-time-scope" data-scope="quarter">Cuatrimestre</button>
@@ -849,7 +935,7 @@ function renderDashboardPanel(state) {
           <span id="dashboard-week-chip" class="panel-tag"${data?.chip ? '' : ' hidden'}>${escapeHtml(data?.chip || '')}</span>
         </div>
         <div id="dashboard-summary-grid" class="summary-grid">
-          ${summaryCards.map((card) => `
+          ${dashboardSummaryView.visibleCards.map((card) => `
             <article class="summary-card summary-card-dashboard ${escapeHtml(card.accent || '')}">
               <span class="summary-label">${escapeHtml(card.label)}</span>
               <strong class="summary-value">${escapeHtml(String(card.value))}</strong>
@@ -857,6 +943,11 @@ function renderDashboardPanel(state) {
             </article>
           `).join('')}
         </div>
+        ${dashboardSummaryView.hiddenCount ? `
+          <div class="seg-summary-mobile-actions">
+            <button type="button" class="btn-ghost catalog-mobile-more" data-action="toggle-dashboard-summary-cards" aria-expanded="${state.showAllDashboardSummaryCards ? 'true' : 'false'}">${state.showAllDashboardSummaryCards ? 'Ver menos' : `Ver ${dashboardSummaryView.hiddenCount} más`}</button>
+          </div>
+        ` : ''}
       </section>
 
       <section class="panel panel-soft">
@@ -1115,30 +1206,33 @@ function renderSupervisorConsolidadoPanel(state) {
   ].filter(Boolean).join('');
 
   return `
-    <section class="panel panel-soft full-width seguimiento-next-shell">
-      <div class="panel-head">
-        <div>
-          <p class="eyebrow">Seguimiento</p>
-          <h2>Consolidado semanal</h2>
+    <div class="seguimiento-next-shell">
+      <section class="panel panel-soft full-width">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Seguimiento</p>
+            <h2>Consolidado semanal</h2>
+          </div>
+          <div class="sup-controls dashboard-period-controls">
+            <label class="sup-control dashboard-period-field">
+              <span>Supervisor</span>
+              <select data-action="change-supervisor" id="sup-supervisor-select">
+                ${data.supervisors.map((supervisor) => `<option value="${escapeHtml(supervisor.name)}"${supervisor.name === data.selectedSupervisorName ? ' selected' : ''}>${escapeHtml(supervisor.name)} · Sector ${escapeHtml(supervisor.sector)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="sup-control dashboard-period-field">
+              <span>Semana</span>
+              <select data-action="change-supervisor-week" id="sup-week-select">
+                ${data.weekOptions.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === data.selectedWeek ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+              </select>
+            </label>
+          </div>
         </div>
-        <div class="sup-controls dashboard-period-controls">
-          <label class="sup-control dashboard-period-field">
-            <span>Supervisor</span>
-            <select data-action="change-supervisor" id="sup-supervisor-select">
-              ${data.supervisors.map((supervisor) => `<option value="${escapeHtml(supervisor.name)}"${supervisor.name === data.selectedSupervisorName ? ' selected' : ''}>${escapeHtml(supervisor.name)} · Sector ${escapeHtml(supervisor.sector)}</option>`).join('')}
-            </select>
-          </label>
-          <label class="sup-control dashboard-period-field">
-            <span>Semana</span>
-            <select data-action="change-supervisor-week" id="sup-week-select">
-              ${data.weekOptions.map((option) => `<option value="${escapeHtml(option.value)}"${option.value === data.selectedWeek ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-            </select>
-          </label>
-        </div>
-      </div>
-      ${state.message ? `<p class="fn-form-msg${state.isError ? ' is-error' : ''}">${escapeHtml(state.message)}</p>` : ''}
+        ${state.message ? `<p class="fn-form-msg${state.isError ? ' is-error' : ''}">${escapeHtml(state.message)}</p>` : ''}
+      </section>
       ${data.selectedSupervisor ? `
-        <div class="sup-capture" data-sup-sector="${escapeHtml(data.selectedSupervisor.sector)}" data-sup-week="${escapeHtml(data.selectedWeek)}">
+        <section class="panel panel-soft full-width">
+          <div class="sup-capture" data-sup-sector="${escapeHtml(data.selectedSupervisor.sector)}" data-sup-week="${escapeHtml(data.selectedWeek)}">
           <div class="sup-card-head">
             <div class="sup-card-meta">
               <span class="sup-meta-label">Supervisor:</span>
@@ -1207,9 +1301,10 @@ function renderSupervisorConsolidadoPanel(state) {
               </table>
             </div>
           ` : '<p class="empty-state" style="padding:16px 0">Este supervisor no tiene células asignadas.</p>'}
-        </div>
+          </div>
+        </section>
       ` : ''}
-    </section>
+    </div>
   `;
 }
 
@@ -1449,16 +1544,27 @@ function renderReportPreviewDialog(report, options = {}) {
 export function renderSeguimientoShell(state) {
   const summary = state.summary;
   const cards = state.cards;
+  const scopeTabs = Array.isArray(state.scopeTabs) ? state.scopeTabs : [];
+  const singleScopeTab = scopeTabs.length === 1 ? scopeTabs[0] : null;
+  const dashboardScopeMarkup = state.activeTab === 'dashboard'
+    ? renderDashboardScopeTabs(state)
+    : '';
+  const goalsScopeMarkup = state.activeTab === 'goals'
+    ? (singleScopeTab
+      ? renderScopeState(singleScopeTab, 'rcs-scope-bridge seg-scope-panel-bridge seg-access-scope-bridge')
+      : renderScopeTabs(state))
+    : '';
+  const dashboardPanelMarkup = state.activeTab === 'dashboard' ? renderDashboardPanel(state) : '';
+  const goalsPanelMarkup = state.activeTab === 'goals' ? renderMetasPanel(state) : '';
 
   return `
     <section class="seguimiento-next-shell">
       ${renderSegTabs(state)}
-      ${renderScopeTabs(state)}
       ${state.activeTab === 'seguimiento' ? renderWeekContext(state) : ''}
       ${state.activeTab === 'seguimiento' ? renderTotalsPanel(state) : ''}
       ${state.activeTab === 'supervisor' ? renderSupervisorConsolidadoPanel(state) : ''}
-      ${state.activeTab === 'dashboard' ? renderDashboardPanel(state) : ''}
-      ${state.activeTab === 'goals' ? renderMetasPanel(state) : ''}
+      ${state.activeTab === 'dashboard' ? renderScopedPanelBundle(dashboardScopeMarkup, dashboardPanelMarkup, 'dashboard-scope-bundle') : ''}
+      ${state.activeTab === 'goals' ? renderScopedPanelBundle(goalsScopeMarkup, goalsPanelMarkup, 'goals-scope-bundle') : ''}
       ${state.activeTab !== 'seguimiento' && state.activeTab !== 'supervisor' && state.activeTab !== 'dashboard' && state.activeTab !== 'goals' ? renderPlaceholderPanel((state.segTabs || []).find((tab) => tab.key === state.activeTab)?.label || 'Seguimiento') : ''}
       ${state.activeTab === 'seguimiento' ? `
     <section class="panel panel-soft full-width">

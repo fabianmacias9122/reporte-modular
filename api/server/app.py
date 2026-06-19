@@ -144,7 +144,7 @@ class _TursoConnection:
     def __exit__(self, *_):
         self.commit()
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PUBLIC_DIR = PROJECT_ROOT / "public"
 NEXT_PUBLIC_DIR = PROJECT_ROOT / "frontend-next" / "public"
 DATA_DIR = PROJECT_ROOT / "data"
@@ -172,17 +172,17 @@ BACKEND_RCM_WEEKS = [
     {"week": 3, "phase": "GANAR", "verb": "CONTACTAR"},
     {"week": 4, "phase": "GANAR", "verb": "CONFIRMAR"},
     {"week": 5, "phase": "GANAR", "verb": "DESATAR"},
-    {"week": 6, "phase": "GANAR", "verb": "LLEVAR"},
+    {"week": 6, "phase": "GANAR", "verb": "LLEVAR", "event": "Levántate", "rcmKey": "levantate"},
     {"week": 7, "phase": "CONSOLIDAR", "verb": "MOTIVAR"},
     {"week": 8, "phase": "CONSOLIDAR", "verb": "INTEGRAR"},
     {"week": 9, "phase": "CONSOLIDAR", "verb": "CONSOLIDAR"},
     {"week": 10, "phase": "CONSOLIDAR", "verb": "PREPARAR"},
-    {"week": 11, "phase": "CONSOLIDAR", "verb": "SANTIFICAR"},
+    {"week": 11, "phase": "CONSOLIDAR", "verb": "SANTIFICAR", "event": "Restauración", "rcmKey": "restauracion"},
     {"week": 12, "phase": "DISCIPULAR", "verb": "MATRICULAR"},
     {"week": 13, "phase": "DISCIPULAR", "verb": "CONSERVAR"},
     {"week": 14, "phase": "DISCIPULAR", "verb": "DOCTRINAR"},
     {"week": 15, "phase": "DISCIPULAR", "verb": "DISCIPULAR"},
-    {"week": 16, "phase": "DISCIPULAR", "verb": "BAUTIZAR"},
+    {"week": 16, "phase": "DISCIPULAR", "verb": "BAUTIZAR", "event": "Cielos Abiertos", "rcmKey": "cielosAbiertos"},
 ]
 
 # Master password (soporte): si está definido en el entorno, permite ingresar
@@ -242,6 +242,10 @@ def create_app() -> Flask:
         for origin in [
             os.environ.get("CORS_ALLOW_ORIGIN", ""),
             "https://reporte-rcm.onrender.com",
+            "http://127.0.0.1:8080",
+            "http://localhost:8080",
+            "http://127.0.0.1:8091",
+            "http://localhost:8091",
             "http://127.0.0.1:8090",
             "http://localhost:8090",
         ]
@@ -539,6 +543,32 @@ def create_app() -> Flask:
             return None, (jsonify({"message": "No autorizado."}), 403)
 
         return actor, None
+
+    def require_authenticated_actor(connection: sqlite3.Connection):
+        actor_id = normalize_nullable_int(request.headers.get("X-Acting-Person-Id"))
+        if not actor_id:
+            return None, (jsonify({"message": "No autorizado."}), 401)
+
+        actor = connection.execute(
+            "SELECT id, role, is_coordinator, is_admin, is_system_account, supervisor_sector FROM people_catalog WHERE id = ?",
+            (actor_id,),
+        ).fetchone()
+        if not actor:
+            return None, (jsonify({"message": "No autorizado."}), 401)
+        return actor, None
+
+    def _actor_owned_cell_number(connection: sqlite3.Connection, actor_id: int) -> str:
+        row = connection.execute(
+            """
+            SELECT cell_number
+            FROM cell_catalog
+            WHERE leader_person_id = ? OR assistant_person_id = ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (actor_id, actor_id),
+        ).fetchone()
+        return str(row["cell_number"] or "").strip() if row else ""
 
     @app.get("/api/catalogs")
     def get_catalogs() -> Response:
@@ -1071,6 +1101,7 @@ def create_app() -> Flask:
     @app.post("/api/reports")
     def create_report() -> Response:
         payload = normalize_payload(read_payload())
+        normalize_report_rcm_snapshot(payload)
         validation_error = validate_report_payload(payload)
         if validation_error:
             return jsonify({"message": validation_error}), 400
@@ -1156,6 +1187,7 @@ def create_app() -> Flask:
     @app.put("/api/reports/<int:report_id>")
     def update_report(report_id: int) -> Response:
         payload = normalize_payload(read_payload())
+        normalize_report_rcm_snapshot(payload)
         validation_error = validate_report_payload(payload)
         if validation_error:
             return jsonify({"message": validation_error}), 400
@@ -1241,6 +1273,9 @@ def create_app() -> Flask:
         restauracion = int(payload.get("restauracionGoal") or 0)
         bautismos = int(payload.get("bautismosGoal") or 0)
         with get_connection() as connection:
+            _actor, error_response = require_catalog_actor(connection)
+            if error_response:
+                return error_response
             connection.execute(
                 """
                 INSERT INTO cell_cycle_goals (
@@ -1397,6 +1432,9 @@ def create_app() -> Flask:
             return jsonify({"message": "Payload inválido."}), 400
         now = utc_now_iso()
         with get_connection() as connection:
+            _actor, error_response = require_catalog_actor(connection)
+            if error_response:
+                return error_response
             for key, value in payload.items():
                 connection.execute(
                     """
@@ -2276,6 +2314,37 @@ def build_report_summary(payload: dict) -> dict:
     }
 
 
+def normalize_report_rcm_snapshot(payload: dict) -> dict:
+    raw_snapshot = payload.get("rcmSnapshot")
+    try:
+        week_number = int(str(payload.get("week", "0")).strip() or "0")
+    except ValueError:
+        week_number = 0
+
+    meta = get_backend_rcm_meta(week_number)
+    if isinstance(raw_snapshot, dict):
+        normalized = {
+            "week": int(raw_snapshot.get("week") or week_number or 0),
+            "phase": str(raw_snapshot.get("phase", "")).strip() or str(meta.get("phase", "")).strip(),
+            "phaseLabel": str(raw_snapshot.get("phaseLabel", "")).strip(),
+            "verb": str(raw_snapshot.get("verb", "")).strip() or str(meta.get("verb", "")).strip(),
+            "event": str(raw_snapshot.get("event", "")).strip() or str(meta.get("event", "")).strip(),
+            "rcmKey": str(raw_snapshot.get("rcmKey", "")).strip() or str(meta.get("rcmKey", "")).strip(),
+        }
+    else:
+        normalized = {
+            "week": week_number,
+            "phase": str(meta.get("phase", "")).strip(),
+            "phaseLabel": "",
+            "verb": str(meta.get("verb", "")).strip(),
+            "event": str(meta.get("event", "")).strip(),
+            "rcmKey": str(meta.get("rcmKey", "")).strip(),
+        }
+    normalized["isEventWeek"] = bool(normalized.get("event"))
+    payload["rcmSnapshot"] = normalized
+    return normalized
+
+
 def extract_report_year(payload: dict) -> str:
     report_date = str(payload.get("reportDate", "")).strip()
     if len(report_date) >= 4:
@@ -2593,7 +2662,14 @@ def get_backend_rcm_meta(week_number: int) -> dict:
     for item in BACKEND_RCM_WEEKS:
         if item["week"] == week_number:
             return item
-    return {"week": week_number, "phase": "", "verb": ""}
+    return {"week": week_number, "phase": "", "verb": "", "event": "", "rcmKey": ""}
+
+
+def get_report_rcm_snapshot(payload: dict) -> dict:
+    snapshot = payload.get("rcmSnapshot")
+    if isinstance(snapshot, dict):
+        return snapshot
+    return normalize_report_rcm_snapshot(payload)
 
 
 def get_current_year_quarter() -> tuple[str, str]:
@@ -2788,7 +2864,7 @@ def rebuild_friend_tracking(connection) -> None:
                 cycle["total_events"] += 1
 
             step_key = (cycle_key, report_id, week_number)
-            meta = get_backend_rcm_meta(week_number)
+            meta = get_report_rcm_snapshot(payload)
             step_map[step_key] = {
                 "cycle_key": cycle_key,
                 "report_id": report_id,
@@ -3145,6 +3221,7 @@ def build_friend_tracking_payload(connection, *, cell_number: str = "", sector: 
 
         visitors = payload.get("visitors")
         if isinstance(visitors, list):
+            report_snapshot = get_report_rcm_snapshot(payload)
             for visitor in visitors:
                 if not isinstance(visitor, dict):
                     continue
@@ -3156,9 +3233,9 @@ def build_friend_tracking_payload(connection, *, cell_number: str = "", sector: 
                 if not normalized_name:
                     continue
                 progress_key = f"{report_cell}::{normalized_name}"
-                if report_week == 6:
+                if str(report_snapshot.get("rcmKey", "")).strip() == "levantate":
                     levantate_progress_keys.add(progress_key)
-                elif report_week == 11:
+                elif str(report_snapshot.get("rcmKey", "")).strip() == "restauracion":
                     restauracion_progress_keys.add(progress_key)
 
         baptisms = payload.get("baptisms")

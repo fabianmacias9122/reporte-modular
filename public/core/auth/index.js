@@ -1,10 +1,7 @@
+import { buildApiUrl } from '../api/base-url.js';
+
 export const RC_SESSION_KEY = 'rcSession';
 export const RC_SHARED_SESSION_KEY = 'rcSessionShared';
-
-function getApiBaseUrl() {
-  const runtimeApiBase = String(window.REPORTE_API_BASE_URL || '').trim();
-  return runtimeApiBase.replace(/\/$/, '') || window.location.origin;
-}
 
 export function getStoredSession() {
   try {
@@ -83,7 +80,7 @@ export function restoreStoredSession() {
 export async function lookupAuthUser(username, deps = {}) {
   const { fetchFn = fetch } = deps;
   const normalizedUsername = normalizeUsername(username);
-  const response = await fetchFn(`${getApiBaseUrl()}/api/auth/lookup/${encodeURIComponent(normalizedUsername)}`);
+  const response = await fetchFn(buildApiUrl(`/api/auth/lookup/${encodeURIComponent(normalizedUsername)}`));
   if (response.status === 404) {
     return { found: false, status: 404, data: null };
   }
@@ -93,7 +90,7 @@ export async function lookupAuthUser(username, deps = {}) {
 
 export async function getAuthStatus(personId, deps = {}) {
   const { fetchFn = fetch } = deps;
-  const response = await fetchFn(`${getApiBaseUrl()}/api/auth/status/${encodeURIComponent(personId)}`);
+  const response = await fetchFn(buildApiUrl(`/api/auth/status/${encodeURIComponent(personId)}`));
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.message || 'No se pudo consultar el estado de autenticacion.');
@@ -103,7 +100,7 @@ export async function getAuthStatus(personId, deps = {}) {
 
 export async function loginWithPassword(payload, deps = {}) {
   const { fetchFn = fetch } = deps;
-  const response = await fetchFn(`${getApiBaseUrl()}/api/auth/login`, {
+  const response = await fetchFn(buildApiUrl('/api/auth/login'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -117,7 +114,7 @@ export async function loginWithPassword(payload, deps = {}) {
 
 export async function setPassword(payload, deps = {}) {
   const { fetchFn = fetch } = deps;
-  const response = await fetchFn(`${getApiBaseUrl()}/api/auth/set-password`, {
+  const response = await fetchFn(buildApiUrl('/api/auth/set-password'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

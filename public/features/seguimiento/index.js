@@ -1,9 +1,30 @@
 import { attachSeguimientoController } from './controllers/seguimiento.controller.js';
 import { request } from '../../core/api/index.js';
-import { getRcmWeekInfo } from '../../core/rcm/index.js';
+import { getRcmWeekInfo, getRcmWeeksDefaultClone } from '../../core/rcm/index.js';
 import { fetchCatalogs } from '../catalogos/data/catalogos.repository.js';
 import { getCellMembers } from '../catalogos/models/catalogs-state.js';
 import { fetchSeguimientoReport, fetchSeguimientoReports, fetchFriendTracking } from './data/seguimiento.repository.js';
+
+const TRACKING_TARGET_WEEKS = (() => {
+  const targetWeeks = {
+    noted: 2,
+    levantate: 6,
+    restauracion: 11,
+    cycleClosed: 16,
+  };
+  for (let week = 1; week <= 32; week += 1) {
+    const info = getRcmWeekInfo(week);
+    if (!info) break;
+    if (info.rcmKey === 'levantate') targetWeeks.levantate = info.week;
+    if (info.rcmKey === 'restauracion') targetWeeks.restauracion = info.week;
+    if (info.rcmKey === 'cielosAbiertos') targetWeeks.cycleClosed = info.week;
+  }
+  return targetWeeks;
+})();
+
+function isMissedMilestone(completed, currentWeek, targetWeek) {
+  return !completed && Number(currentWeek || 0) > Number(targetWeek || 0);
+}
 
 // ── Helpers portados del legacy (normalización de visitantes / proceso) ──────
 
@@ -64,6 +85,31 @@ function formatTrackingRangeLabel(start, end) {
   return `${startLabel} — ${endLabel}`;
 }
 
+const DEFAULT_RCM_WEEKS_BY_NUMBER = new Map(
+  getRcmWeeksDefaultClone().map((entry) => [Number(entry.week || 0), { ...entry, isEventWeek: Boolean(entry?.event) }]),
+);
+
+function getDefaultRcmWeekInfo(weekNumber) {
+  return DEFAULT_RCM_WEEKS_BY_NUMBER.get(Number(weekNumber || 0)) || null;
+}
+
+function getReportRcmSnapshot(report) {
+  const snapshot = report?.formData?.rcmSnapshot;
+  if (snapshot && typeof snapshot === 'object') {
+    return {
+      week: Number(snapshot.week || 0),
+      phase: String(snapshot.phase || '').trim(),
+      phaseLabel: String(snapshot.phaseLabel || '').trim(),
+      verb: String(snapshot.verb || '').trim(),
+      event: String(snapshot.event || '').trim(),
+      rcmKey: String(snapshot.rcmKey || '').trim(),
+      isEventWeek: Boolean(snapshot.isEventWeek || snapshot.event),
+    };
+  }
+  const weekNumber = parseInt(String(report?.week || report?.formData?.week || '0'), 10) || 0;
+  return getDefaultRcmWeekInfo(weekNumber);
+}
+
 function buildProcessControlEntries(scopedReports = [], friends = []) {
   const friendsByName = new Map(
     (Array.isArray(friends) ? friends : []).map((friend) => [normalizeVisitorName(friend.name), friend]),
@@ -75,7 +121,7 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
     const sector = String(report?.sector || report?.formData?.sector || '').trim();
     const reportDate = String(report?.reportDate || report?.formData?.reportDate || '').trim();
     const weekNumber = parseInt(String(report?.week || report?.formData?.week || '0'), 10) || 0;
-    const weekMeta = getRcmWeekInfo(weekNumber);
+    const reportSnapshot = getReportRcmSnapshot(report);
 
     normalizeVisitors(report?.formData?.visitors).forEach((visitor) => {
       if (normalizeVisitorKind(visitor.kind) !== 'amigo') return;
@@ -108,14 +154,14 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
       previous.totalReports += 1;
       if (visitor.reachAttended) previous.reachCount += 1;
       if (visitor.sundayAttended) previous.sundayCount += 1;
-      if (weekMeta?.rcmKey === 'levantate' && visitor.eventAttended) {
+      if (reportSnapshot?.rcmKey === 'levantate' && visitor.eventAttended) {
         previous.levantate = true;
         if (!previous.levantateWeek || (weekNumber && weekNumber < previous.levantateWeek)) {
           previous.levantateWeek = weekNumber;
           previous.levantateDate = reportDate;
         }
       }
-      if (weekMeta?.rcmKey === 'restauracion' && visitor.eventAttended) {
+      if (reportSnapshot?.rcmKey === 'restauracion' && visitor.eventAttended) {
         previous.restauracion = true;
         if (!previous.restauracionWeek || (weekNumber && weekNumber < previous.restauracionWeek)) {
           previous.restauracionWeek = weekNumber;
@@ -132,18 +178,35 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
     .map((entry) => {
       const backendFriend = friendsByName.get(normalizeVisitorName(entry.name));
       const cycleClosed = Boolean(backendFriend?.completed) || (entry.currentWeek || 0) >= 16;
+      const notedMissed = isMissedMilestone(entry.noted, entry.currentWeek, TRACKING_TARGET_WEEKS.noted);
+      const levantateMissed = isMissedMilestone(entry.levantate, entry.currentWeek, TRACKING_TARGET_WEEKS.levantate);
+      const restauracionMissed = isMissedMilestone(entry.restauracion, entry.currentWeek, TRACKING_TARGET_WEEKS.restauracion);
       const outsideCohort = !entry.noted && (entry.levantate || entry.restauracion || cycleClosed);
       const complete = entry.noted && entry.levantate && entry.restauracion && cycleClosed;
       const pendingSteps = [];
-      if (!entry.noted) pendingSteps.push('Anotar');
-      if (!entry.levantate) pendingSteps.push('Levántate');
-      if (!entry.restauracion) pendingSteps.push('Restauración');
+      const missedSteps = [];
+      if (!entry.noted) {
+        if (notedMissed) missedSteps.push('Anotar');
+        pendingSteps.push(notedMissed ? 'Anotar (fuera de tiempo)' : 'Anotar');
+      }
+      if (!entry.levantate) {
+        if (levantateMissed) missedSteps.push('Levántate');
+        pendingSteps.push(levantateMissed ? 'Levántate (no lo hizo)' : 'Levántate');
+      }
+      if (!entry.restauracion) {
+        if (restauracionMissed) missedSteps.push('Restauración');
+        pendingSteps.push(restauracionMissed ? 'Restauración (no lo hizo)' : 'Restauración');
+      }
       if (!cycleClosed) pendingSteps.push('Cierre semana 16');
       let statusKey = 'pending';
       let statusLabel = 'Pendiente';
       let statusDetail = pendingSteps.length ? `Pendiente: ${pendingSteps.join(', ')}` : 'Sin pendientes detectados.';
       if (complete) { statusKey = 'complete'; statusLabel = 'Trayecto completo'; }
       else if (outsideCohort) { statusKey = 'outside'; statusLabel = 'Sin cohorte inicial'; }
+      else if (missedSteps.length) {
+        statusKey = 'missed';
+        statusLabel = 'Atrasado';
+      }
       else if (entry.noted && (entry.levantate || entry.restauracion || cycleClosed)) {
         statusKey = 'progress';
         statusLabel = cycleClosed ? 'Cierre parcial' : 'En seguimiento';
@@ -152,6 +215,8 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
         statusDetail = 'Cohorte anotada y hitos principales cubiertos dentro del ciclo.';
       } else if (outsideCohort) {
         statusDetail = 'Aparece en hitos del proceso, pero no viene de la cohorte anotada.';
+      } else if (missedSteps.length) {
+        statusDetail = `No completó a tiempo: ${missedSteps.join(', ')}`;
       } else if (entry.noted && (entry.levantate || entry.restauracion || cycleClosed)) {
         statusDetail = cycleClosed
           ? `Cerró ciclo, pero le faltó: ${pendingSteps.filter((step) => step !== 'Cierre semana 16').join(', ') || 'revisión manual'}`
@@ -165,6 +230,10 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
         cycleClosed,
         outsideCohort,
         complete,
+        notedMissed,
+        levantateMissed,
+        restauracionMissed,
+        missedSteps,
         pendingSteps,
         statusKey,
         statusLabel,
@@ -173,7 +242,7 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
     })
     .filter((entry) => entry.noted || entry.levantate || entry.restauracion || entry.cycleClosed)
     .sort((left, right) => {
-      const w = { complete: 4, progress: 3, outside: 2, pending: 1 };
+      const w = { complete: 5, missed: 4, progress: 3, outside: 2, pending: 1 };
       const diff = (w[right.statusKey] || 0) - (w[left.statusKey] || 0);
       if (diff !== 0) return diff;
       return String(right.lastReportDate || '').localeCompare(String(left.lastReportDate || ''));
@@ -1343,6 +1412,7 @@ export function createSeguimientoFeature(options = {}) {
     dashboardTimeScope: 'week',
     dashboardPeriod: '',
     dashboardAttendanceTab: 'hermanos',
+    showAllDashboardSummaryCards: false,
     dashboardData: null,
     previewReport: null,
     previewMode: 'default',
@@ -1357,6 +1427,7 @@ export function createSeguimientoFeature(options = {}) {
     metasData: null,
     metasLoading: false,
     metasCellFilter: '',
+    showAllMetasSummaryCards: false,
     metasCells: [],
     processControlEntries: [],
     controlDetailKey: '',
@@ -1419,13 +1490,17 @@ export function createSeguimientoFeature(options = {}) {
     }
   }
 
-  function changeAccessScope(scopeKey) {
+  async function changeAccessScope(scopeKey) {
     const nextScope = String(scopeKey || '').trim();
     if (!nextScope || nextScope === state.accessScope) return;
     state.accessScope = nextScope;
     state.cellFilter = '';
+    state.metasCellFilter = '';
     syncDerivedState();
     render();
+    if (state.activeTab === 'goals') {
+      await loadMetas();
+    }
   }
 
   function changeWeekOffset(offset) {
@@ -1468,8 +1543,21 @@ export function createSeguimientoFeature(options = {}) {
       .sort((left, right) => Number(left) - Number(right));
   }
 
+  function syncMetasCellFilter() {
+    const allowedCells = buildMetasCells();
+    state.metasCells = allowedCells;
+    const shouldShow = state.accessScope !== 'cell' && allowedCells.length > 1;
+    if (!shouldShow) {
+      state.metasCellFilter = '';
+      return;
+    }
+    if (state.metasCellFilter && !allowedCells.includes(String(state.metasCellFilter))) {
+      state.metasCellFilter = '';
+    }
+  }
+
   async function loadMetas() {
-    state.metasCells = buildMetasCells();
+    syncMetasCellFilter();
     state.metasLoading = true;
     render();
     try {
@@ -1559,6 +1647,16 @@ export function createSeguimientoFeature(options = {}) {
     const nextTab = String(tabKey || '').trim() === 'amigos' ? 'amigos' : 'hermanos';
     if (nextTab === state.dashboardAttendanceTab) return;
     state.dashboardAttendanceTab = nextTab;
+    render();
+  }
+
+  function toggleDashboardSummaryCards() {
+    state.showAllDashboardSummaryCards = !state.showAllDashboardSummaryCards;
+    render();
+  }
+
+  function toggleMetasSummaryCards() {
+    state.showAllMetasSummaryCards = !state.showAllMetasSummaryCards;
     render();
   }
 
@@ -1735,6 +1833,8 @@ export function createSeguimientoFeature(options = {}) {
       changeDashboardTimeScope,
       changeDashboardPeriod,
       changeDashboardAttendanceTab,
+      toggleDashboardSummaryCards,
+      toggleMetasSummaryCards,
       changeSupervisor,
       changeSupervisorWeek,
       toggleShowOffering,

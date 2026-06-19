@@ -1,4 +1,6 @@
 export function attachSettingsController(root, actions) {
+  const mobileNavButtons = Array.from(root.querySelectorAll('.settings-mobile-nav__chip'));
+  const mobileSections = Array.from(root.querySelectorAll('.settings-mobile-section'));
   const cycleForm = root.querySelector('#settings-cycle-form');
   const goalsForm = root.querySelector('#settings-goals-form');
   const preferencesForm = root.querySelector('#configuracion-preferences-form');
@@ -9,6 +11,44 @@ export function attachSettingsController(root, actions) {
   const verbsSaveButton = root.querySelector('#settings-rcm-verbs-save-btn');
   const verbsResetButton = root.querySelector('#settings-rcm-verbs-reset-btn');
   const verbsAddButton = root.querySelector('#rcm-verbs-add-btn');
+  const mobileRcmToggleButton = root.querySelector('#settings-rcm-mobile-toggle');
+
+  function syncMobileSections(sectionName) {
+    const activeSection = sectionName || 'cycle';
+    const isMobile = window.matchMedia('(max-width: 720px)').matches;
+    mobileNavButtons.forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      const isActive = button.dataset.section === activeSection;
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+    mobileSections.forEach((section) => {
+      if (!(section instanceof HTMLElement)) return;
+      const isActive = section.dataset.mobileSection === activeSection;
+      section.classList.toggle('is-active', !isMobile || isActive);
+      if (isMobile) {
+        section.hidden = !isActive;
+      } else {
+        section.hidden = false;
+      }
+    });
+  }
+
+  syncMobileSections(actions.getMobileSection?.() || 'cycle');
+
+  mobileNavButtons.forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.addEventListener('click', () => {
+      const nextSection = String(button.dataset.section || 'cycle');
+      actions.setMobileSection?.(nextSection);
+      syncMobileSections(nextSection);
+      root.querySelector('#settings-section-' + nextSection)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  });
+
+  mobileRcmToggleButton?.addEventListener('click', () => {
+    actions.toggleMobileRcmExpanded?.();
+  });
 
   cycleForm?.addEventListener('input', () => {
     actions.preview(new FormData(cycleForm));
@@ -20,6 +60,10 @@ export function attachSettingsController(root, actions) {
 
   cycleSaveButton?.addEventListener('click', async () => {
     if (!cycleForm) return;
+    if (goalsForm && typeof actions.saveCycleSection === 'function') {
+      await actions.saveCycleSection(new FormData(cycleForm), new FormData(goalsForm));
+      return;
+    }
     await actions.saveCycle(new FormData(cycleForm));
   });
 
@@ -61,7 +105,7 @@ export function attachSettingsController(root, actions) {
 
   root.querySelector('#rcm-verbs-tbody')?.addEventListener('change', async (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement)) return;
     const weekNumber = parseInt(String(target.dataset.week || ''), 10);
     if (!Number.isInteger(weekNumber)) return;
     if (target.classList.contains('rvt-phase')) {

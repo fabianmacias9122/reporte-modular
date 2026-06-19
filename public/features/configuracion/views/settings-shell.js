@@ -18,6 +18,13 @@ function renderStatus(status) {
   return `<span class="settings-save-status${status.isError ? ' is-error' : ' is-ok'}">${escapeHtml(status.message)}</span>`;
 }
 
+const RCM_EVENT_OPTIONS = [
+  ['', '—'],
+  ['Levantate', 'Levantate'],
+  ['Restauracion', 'Restauracion'],
+  ['Cielos Abiertos', 'Cielos Abiertos'],
+];
+
 export function renderSettingsQuarterBody() {
   const quarter = getCurrentQuarterSummary();
   return `
@@ -59,8 +66,15 @@ function renderRcmVerbsRows(rcmWeeks) {
         </select>
       </td>
       <td><input type="text" class="rvt-verb" data-week="${escapeHtml(week.week)}" value="${escapeHtml(week.verb || '')}" maxlength="20" style="text-transform:uppercase"></td>
-      <td><input type="text" class="rvt-desc" data-week="${escapeHtml(week.week)}" value="${escapeHtml(week.verbDesc || '')}" maxlength="120"></td>
-      <td><input type="text" class="rvt-event" data-week="${escapeHtml(week.week)}" value="${escapeHtml(week.event || '')}" maxlength="40" placeholder="—"></td>
+      <td><textarea class="rvt-desc" data-week="${escapeHtml(week.week)}" maxlength="120" rows="3">${escapeHtml(week.verbDesc || '')}</textarea></td>
+      <td>
+        <select class="rvt-event" data-week="${escapeHtml(week.week)}" style="width:100%;font-size:0.78rem;padding:4px">
+          ${[
+            ...RCM_EVENT_OPTIONS,
+            ...((week.event && !RCM_EVENT_OPTIONS.some(([value]) => value === week.event)) ? [[week.event, week.event]] : []),
+          ].map(([value, label]) => `<option value="${escapeHtml(value)}"${String(week.event || '') === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+        </select>
+      </td>
       <td>
         <button type="button" class="rvt-remove" data-week="${escapeHtml(week.week)}" title="Quitar semana" aria-label="Quitar semana ${escapeHtml(week.week)}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>
@@ -70,68 +84,156 @@ function renderRcmVerbsRows(rcmWeeks) {
   `).join('');
 }
 
+function renderRcmMobileSummary(rcmWeeks) {
+  const weeks = Array.isArray(rcmWeeks) ? rcmWeeks : [];
+  const totalWeeks = weeks.length;
+  const eventWeeks = weeks.filter((week) => String(week.event || '').trim());
+  const phaseCounts = weeks.reduce((counts, week) => {
+    const key = String(week.phase || '').toUpperCase();
+    if (key) counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+  const phaseSummary = [
+    ['GANAR', 'Ganar'],
+    ['CONSOLIDAR', 'Consolidar'],
+    ['DISCIPULAR', 'Discipular'],
+  ].filter(([key]) => phaseCounts[key]).map(([key, label]) => `${label} ${phaseCounts[key]}`);
+
+  return `
+    <div class="settings-rcm-mobile-summary">
+      <div class="settings-rcm-mobile-summary__stats">
+        <span class="settings-rcm-mobile-summary__pill">${escapeHtml(String(totalWeeks))} semanas</span>
+        <span class="settings-rcm-mobile-summary__pill">${escapeHtml(String(eventWeeks.length))} hitos</span>
+      </div>
+      <p class="settings-rcm-mobile-summary__text">${escapeHtml(phaseSummary.join(' · ') || 'Sin fases configuradas')}</p>
+      <p class="settings-rcm-mobile-summary__text settings-rcm-mobile-summary__text--muted">${escapeHtml(eventWeeks.map((week) => `S${week.week} ${week.event}`).join(' · ') || 'No hay eventos catalizadores marcados')}</p>
+    </div>
+  `;
+}
+
 export function renderSettingsShell(state) {
   const settings = state.settings;
   const historyScope = state.preferences.history_scope;
   const currentLang = state.currentLang;
-  const isAdmin = Boolean(state.currentUser?.isAdmin);
+  const isRcmExpanded = Boolean(state.mobileRcmExpanded);
+  const canEditOperational = Boolean(state.canEditOperational);
+  const goalsReadOnlyNote = canEditOperational
+    ? ''
+    : '<div class="settings-inline-note">Solo administradores pueden cambiar estas metas.</div>';
   return `
     <section class="workspace-main">
-      <div class="page-shell" style="padding-top:0">
-        <div class="panel-head" style="margin-bottom:20px">
+      <div class="page-shell settings-layout" style="padding-top:0">
+        <div class="panel-head settings-head" style="margin-bottom:20px">
           <div>
             <p class="eyebrow">Sistema</p>
             <h2>Configuración</h2>
+            <p class="settings-page-intro">Centraliza el ciclo, metas y semanas del proceso RCM sin perder el historial ya capturado.</p>
           </div>
         </div>
+        <nav class="settings-mobile-nav" aria-label="Secciones de configuracion">
+          <button type="button" class="settings-mobile-nav__chip" data-section="cycle" aria-controls="settings-section-cycle">Ciclo</button>
+          <button type="button" class="settings-mobile-nav__chip" data-section="preferences" aria-controls="settings-section-preferences">Preferencias</button>
+          ${canEditOperational ? '<button type="button" class="settings-mobile-nav__chip" data-section="rcm" aria-controls="settings-section-rcm">RCM</button>' : ''}
+        </nav>
         <div class="settings-grid">
-          <div class="settings-card" id="settings-cycle-card"${isAdmin ? '' : ' hidden'}>
-            <div class="settings-card-header">
-              <div>
-                <strong class="settings-card-title">Ciclo RCM activo</strong>
-                <p class="settings-card-desc">Fecha en que inició el ciclo actual. El sistema calcula la semana en curso automáticamente a partir de este día.</p>
-              </div>
+          <section class="settings-mobile-section settings-column settings-column--primary" id="settings-section-cycle" data-mobile-section="cycle">
+            ${canEditOperational ? `
+            <div class="settings-section-label">
+              <span class="settings-section-kicker">Operación</span>
+              <strong class="settings-section-title">Ciclo del periodo</strong>
             </div>
-            <form id="settings-cycle-form">
+            <div class="settings-card" id="settings-cycle-card">
+              <div class="settings-card-header">
+                <div>
+                  <strong class="settings-card-title">Configuración del ciclo RCM</strong>
+                  <p class="settings-card-desc">Define inicio, semana y metas del ciclo actual. El sistema calcula la semana en curso automáticamente a partir de esta base.</p>
+                </div>
+              </div>
+              <form id="settings-cycle-form"></form>
               <div class="settings-card-body">
-                <label class="settings-label" for="setting-cycle-start">Fecha de inicio del ciclo</label>
-                <input id="setting-cycle-start" name="cycle_start_date" type="date" class="settings-input" value="${escapeHtml(settings.cycle_start_date || '')}">
-                <label class="settings-label" for="setting-week-start-day" style="margin-top:12px">Día de inicio de semana</label>
-                <select id="setting-week-start-day" name="week_start_day" class="settings-input">
-                  ${[
-                    ['0', 'Domingo'],
-                    ['1', 'Lunes'],
-                    ['2', 'Martes'],
-                    ['3', 'Miércoles'],
-                    ['4', 'Jueves'],
-                    ['5', 'Viernes'],
-                    ['6', 'Sábado'],
-                  ].map(([value, label]) => `<option value="${value}"${String(settings.week_start_day) === value ? ' selected' : ''}>${label}</option>`).join('')}
-                </select>
-                <label class="settings-label" for="setting-grace-hours" style="margin-top:12px">Horas de gracia al inicio de semana</label>
-                <div style="display:flex;align-items:center;gap:8px">
-                  <input id="setting-grace-hours" name="report_grace_hours" type="number" min="0" max="48" step="1" class="settings-input" style="width:80px" placeholder="0" value="${escapeHtml(settings.report_grace_hours || '0')}">
-                  <span style="font-size:0.8rem;color:var(--muted)">horas — el sistema sugiere la semana anterior durante este tiempo</span>
+                <div class="settings-cycle-layout">
+                  <div class="settings-cycle-basics">
+                    <div class="settings-field-block">
+                      <label class="settings-label" for="setting-cycle-start">Fecha de inicio del ciclo</label>
+                      <input id="setting-cycle-start" name="cycle_start_date" type="date" class="settings-input" form="settings-cycle-form" value="${escapeHtml(settings.cycle_start_date || '')}">
+                    </div>
+                    <div class="settings-field-block">
+                      <label class="settings-label" for="setting-week-start-day">Día de inicio de semana</label>
+                      <select id="setting-week-start-day" name="week_start_day" class="settings-input" form="settings-cycle-form">
+                        ${[
+                          ['0', 'Domingo'],
+                          ['1', 'Lunes'],
+                          ['2', 'Martes'],
+                          ['3', 'Miércoles'],
+                          ['4', 'Jueves'],
+                          ['5', 'Viernes'],
+                          ['6', 'Sábado'],
+                        ].map(([value, label]) => `<option value="${value}"${String(settings.week_start_day) === value ? ' selected' : ''}>${label}</option>`).join('')}
+                      </select>
+                    </div>
+                    <div class="settings-subsection settings-subsection--goals-block">
+                      <div class="settings-subsection-head">
+                        <strong class="settings-subsection-title">Metas del ciclo</strong>
+                        <span class="settings-subsection-kicker">Objetivos</span>
+                      </div>
+                      <p class="settings-help-text">Define las metas RCM del periodo actual. Se usarán en Seguimiento y se guardarán para la célula activa.</p>
+                      <form id="settings-goals-form">
+                        <div class="settings-card-body settings-card-body--goals-inline">
+                          <div id="settings-goals-scope" class="settings-inline-note">${escapeHtml(getGoalsScopeLabel(state.currentUser))}</div>
+                          <div class="settings-metrics-grid">
+                            <label class="settings-metric-field" for="setting-goal-levantate">
+                              <span class="settings-label">Evento Levántate</span>
+                              <input id="setting-goal-levantate" name="rcm_goal_levantate" type="number" min="0" step="1" class="settings-input settings-input--metric" placeholder="4" value="${escapeHtml(settings.rcm_goal_levantate || '4')}">
+                            </label>
+                            <label class="settings-metric-field" for="setting-goal-restauracion">
+                              <span class="settings-label">Evento Santificar</span>
+                              <input id="setting-goal-restauracion" name="rcm_goal_restauracion" type="number" min="0" step="1" class="settings-input settings-input--metric" placeholder="3" value="${escapeHtml(settings.rcm_goal_restauracion || '3')}">
+                            </label>
+                            <label class="settings-metric-field" for="setting-goal-bautismos">
+                              <span class="settings-label">Bautismo</span>
+                              <input id="setting-goal-bautismos" name="rcm_goal_bautismos" type="number" min="0" step="1" class="settings-input settings-input--metric" placeholder="2" value="${escapeHtml(settings.rcm_goal_bautismos || '2')}">
+                            </label>
+                          </div>
+                        </div>
+                      </form>
+                    </div>
+                    <div class="settings-field-block settings-field-block--compact">
+                      <label class="settings-label" for="setting-grace-hours">Horas de gracia al inicio de semana</label>
+                      <input id="setting-grace-hours" name="report_grace_hours" type="number" min="0" max="48" step="1" class="settings-input settings-input--compact" form="settings-cycle-form" placeholder="0" value="${escapeHtml(settings.report_grace_hours || '0')}">
+                      <p class="settings-help-text">Durante este tiempo el sistema puede sugerir la semana anterior.</p>
+                    </div>
+                    <div class="settings-field-block settings-field-block--compact">
+                      <label class="settings-label" for="setting-process-late-weeks">Prórroga para anotar tardío</label>
+                      <input id="setting-process-late-weeks" name="process_entry_late_weeks" type="number" min="0" max="14" step="1" class="settings-input settings-input--compact" form="settings-cycle-form" placeholder="0" value="${escapeHtml(settings.process_entry_late_weeks || '14')}">
+                      <p class="settings-help-text">Semanas extra para registrar proceso sin contar asistencia.</p>
+                    </div>
+                  </div>
+                  <div class="settings-cycle-secondary">
+                    <div class="settings-cycle-side">
+                      <div id="settings-week-preview" class="settings-week-preview">${renderSettingsWeekPreview(settings)}</div>
+                      <div class="settings-subsection settings-subsection--info">
+                        <div class="settings-subsection-head">
+                          <strong class="settings-subsection-title">Contexto del año</strong>
+                          <span class="settings-subsection-kicker">Referencia rápida</span>
+                        </div>
+                        <div id="settings-quarter-body" class="settings-quarter-body">${renderSettingsQuarterBody()}</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <label class="settings-label" for="setting-process-late-weeks" style="margin-top:12px">Prórroga para anotar tardío</label>
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <input id="setting-process-late-weeks" name="process_entry_late_weeks" type="number" min="0" max="14" step="1" class="settings-input" style="width:80px" placeholder="0" value="${escapeHtml(settings.process_entry_late_weeks || '14')}">
-                  <span style="font-size:0.8rem;color:var(--muted)">semanas después de la 2 en las que aún se permite registrar proceso sin contar asistencia</span>
-                </div>
-                <div id="settings-week-preview" class="settings-week-preview" style="margin-top:10px">${renderSettingsWeekPreview(settings)}</div>
               </div>
-            </form>
-            <div class="settings-card-footer">
-              <button id="settings-save-btn" type="button" class="btn">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                <span>Guardar</span>
-              </button>
-              ${renderStatus(state.statuses.cycle)}
+              <div class="settings-card-footer">
+                <button id="settings-save-btn" type="button" class="btn">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  <span>Guardar ciclo y metas</span>
+                </button>
+                ${renderStatus(state.statuses.cycle)}
+              </div>
             </div>
-          </div>
+            ` : ''}
+          ${!canEditOperational ? `
           <div class="settings-card settings-card--info" id="settings-quarter-card">
             <div class="settings-card-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               <div>
                 <strong class="settings-card-title">Contexto del año</strong>
                 <p class="settings-card-desc">Referencia del cuatrimestre y año en curso según el calendario de la IAFCJ.</p>
@@ -139,56 +241,90 @@ export function renderSettingsShell(state) {
             </div>
             <div id="settings-quarter-body" class="settings-quarter-body">${renderSettingsQuarterBody()}</div>
           </div>
-          <div class="settings-card" id="settings-goals-card">
+          <div class="settings-card settings-card--readonly" id="settings-goals-card">
             <div class="settings-card-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               <div>
                 <strong class="settings-card-title">Metas del cuatrimestre</strong>
                 <p class="settings-card-desc">Define las metas RCM del periodo actual. Se usarán en Seguimiento y se guardarán para la célula activa.</p>
               </div>
             </div>
             <form id="settings-goals-form">
-              <div class="settings-card-body">
+              <div class="settings-card-body settings-card-body--goals-inline">
                 <div id="settings-goals-scope" class="settings-inline-note">${escapeHtml(getGoalsScopeLabel(state.currentUser))}</div>
-                <label class="settings-label" for="setting-goal-levantate">Evento Levántate</label>
-                <input id="setting-goal-levantate" name="rcm_goal_levantate" type="number" min="0" step="1" class="settings-input" placeholder="4" value="${escapeHtml(settings.rcm_goal_levantate || '4')}">
-                <label class="settings-label" for="setting-goal-restauracion" style="margin-top:12px">Evento Santificar</label>
-                <input id="setting-goal-restauracion" name="rcm_goal_restauracion" type="number" min="0" step="1" class="settings-input" placeholder="3" value="${escapeHtml(settings.rcm_goal_restauracion || '3')}">
-                <label class="settings-label" for="setting-goal-bautismos" style="margin-top:12px">Bautismo</label>
-                <input id="setting-goal-bautismos" name="rcm_goal_bautismos" type="number" min="0" step="1" class="settings-input" placeholder="2" value="${escapeHtml(settings.rcm_goal_bautismos || '2')}">
-              </div>
-            </form>
-            <div class="settings-card-footer">
-              <button id="settings-goals-save-btn" type="button" class="btn">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                <span>Guardar metas</span>
-              </button>
-              ${renderStatus(state.statuses.goals)}
-            </div>
-          </div>
-          <div class="settings-card" id="settings-prefs-card">
-            <div class="settings-card-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
-              <div>
-                <strong class="settings-card-title">Preferencias de historial</strong>
-                <p class="settings-card-desc">Controla cuántos cuatrimestres se muestran en tus reportes registrados.</p>
-              </div>
-            </div>
-            <form id="configuracion-preferences-form">
-              <div class="settings-card-body">
-                <label class="settings-label">Historial visible</label>
-                <div class="settings-toggle-group">
-                  <label class="settings-toggle-option">
-                    <input type="radio" name="history_scope" id="pref-history-current" value="current"${historyScope === 'current' ? ' checked' : ''}>
-                    <span>Solo cuatrimestre actual</span>
+                ${goalsReadOnlyNote}
+                <div class="settings-metrics-grid">
+                  <label class="settings-metric-field" for="setting-goal-levantate">
+                    <span class="settings-label">Evento Levántate</span>
+                    <input id="setting-goal-levantate" name="rcm_goal_levantate" type="number" min="0" step="1" class="settings-input settings-input--metric" placeholder="4" value="${escapeHtml(settings.rcm_goal_levantate || '4')}" disabled>
                   </label>
-                  <label class="settings-toggle-option">
-                    <input type="radio" name="history_scope" id="pref-history-all" value="all"${historyScope === 'all' ? ' checked' : ''}>
-                    <span>Todos los cuatrimestres</span>
+                  <label class="settings-metric-field" for="setting-goal-restauracion">
+                    <span class="settings-label">Evento Santificar</span>
+                    <input id="setting-goal-restauracion" name="rcm_goal_restauracion" type="number" min="0" step="1" class="settings-input settings-input--metric" placeholder="3" value="${escapeHtml(settings.rcm_goal_restauracion || '3')}" disabled>
+                  </label>
+                  <label class="settings-metric-field" for="setting-goal-bautismos">
+                    <span class="settings-label">Bautismo</span>
+                    <input id="setting-goal-bautismos" name="rcm_goal_bautismos" type="number" min="0" step="1" class="settings-input settings-input--metric" placeholder="2" value="${escapeHtml(settings.rcm_goal_bautismos || '2')}" disabled>
                   </label>
                 </div>
               </div>
             </form>
+            <div class="settings-card-footer">
+              ${renderStatus(state.statuses.goals)}
+            </div>
+          </div>
+          ` : ''}
+          </section>
+          <section class="settings-mobile-section settings-column settings-column--secondary" id="settings-section-preferences" data-mobile-section="preferences">
+            <div class="settings-section-label">
+              <span class="settings-section-kicker">Personalización</span>
+              <strong class="settings-section-title">Preferencias de consulta</strong>
+            </div>
+          <div class="settings-card" id="settings-prefs-card">
+            <div class="settings-card-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+              <div>
+                <strong class="settings-card-title">Preferencias</strong>
+                <p class="settings-card-desc">Controla cómo ves la información y el idioma de la interfaz.</p>
+              </div>
+            </div>
+            <div class="settings-card-body settings-card-body--preferences">
+              <div class="settings-subsection">
+                <div class="settings-subsection-head">
+                  <strong class="settings-subsection-title">Historial visible</strong>
+                  <span class="settings-subsection-kicker">Tus reportes</span>
+                </div>
+                <form id="configuracion-preferences-form">
+                  <div class="settings-toggle-group">
+                    <label class="settings-toggle-option">
+                      <input type="radio" name="history_scope" id="pref-history-current" value="current"${historyScope === 'current' ? ' checked' : ''}>
+                      <span>Solo cuatrimestre actual</span>
+                    </label>
+                    <label class="settings-toggle-option">
+                      <input type="radio" name="history_scope" id="pref-history-all" value="all"${historyScope === 'all' ? ' checked' : ''}>
+                      <span>Todos los cuatrimestres</span>
+                    </label>
+                  </div>
+                </form>
+              </div>
+              <div class="settings-subsection">
+                <div class="settings-subsection-head">
+                  <strong class="settings-subsection-title">Idioma</strong>
+                  <span class="settings-subsection-kicker">Interfaz</span>
+                </div>
+                <form id="configuracion-language-form">
+                  <div class="settings-toggle-group">
+                    <label class="settings-toggle-option">
+                      <input type="radio" name="settings_lang" id="settings-lang-es" value="es"${currentLang === 'es' ? ' checked' : ''}>
+                      <span>Español</span>
+                    </label>
+                    <label class="settings-toggle-option">
+                      <input type="radio" name="settings_lang" id="settings-lang-en" value="en"${currentLang === 'en' ? ' checked' : ''}>
+                      <span>English</span>
+                    </label>
+                  </div>
+                </form>
+              </div>
+            </div>
             <div class="settings-card-footer">
               <button id="settings-prefs-save-btn" type="button" class="btn">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -197,70 +333,71 @@ export function renderSettingsShell(state) {
               ${renderStatus(state.statuses.preferences)}
             </div>
           </div>
-          <div class="settings-card" id="settings-language-card">
-            <div class="settings-card-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-              <div>
-                <strong class="settings-card-title">Idioma</strong>
-                <p class="settings-card-desc">Selecciona el idioma de la interfaz.</p>
-              </div>
+          </section>
+          ${canEditOperational ? `
+          <section class="settings-mobile-section settings-mobile-section--full" id="settings-section-rcm" data-mobile-section="rcm">
+            <div class="settings-section-label settings-section-label--full">
+              <span class="settings-section-kicker">Avanzado</span>
+              <strong class="settings-section-title">Proceso RCM</strong>
             </div>
-            <form id="configuracion-language-form">
-              <div class="settings-card-body">
-                <div class="settings-toggle-group">
-                  <label class="settings-toggle-option">
-                    <input type="radio" name="settings_lang" id="settings-lang-es" value="es"${currentLang === 'es' ? ' checked' : ''}>
-                    <span>Español</span>
-                  </label>
-                  <label class="settings-toggle-option">
-                    <input type="radio" name="settings_lang" id="settings-lang-en" value="en"${currentLang === 'en' ? ' checked' : ''}>
-                    <span>English</span>
-                  </label>
+            <div class="settings-card settings-card--full" id="settings-rcm-verbs-card">
+              <div class="settings-card-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                <div>
+                  <strong class="settings-card-title">Semanas, verbos y eventos</strong>
+                  <p class="settings-card-desc">Ajusta semanas, verbos y eventos catalizadores del ciclo sin reinterpretar el historial ya registrado.</p>
                 </div>
               </div>
-            </form>
-          </div>
-          <div class="settings-card settings-card--full" id="settings-rcm-verbs-card"${isAdmin ? '' : ' hidden'}>
-            <div class="settings-card-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              <div>
-                <strong class="settings-card-title">Verbos RCM por semana</strong>
-                <p class="settings-card-desc">Personaliza los verbos, descripciones y nombres de eventos catalizadores de cada semana del ciclo.</p>
-              </div>
-            </div>
-            <div class="settings-card-body" style="overflow-x:auto">
-              <table class="rcm-verbs-table" id="rcm-verbs-table">
-                <thead>
-                  <tr>
-                    <th style="width:44px">Sem.</th>
-                    <th style="width:120px">Etapa</th>
-                    <th style="width:130px">Verbo</th>
-                    <th>Descripción</th>
-                    <th style="width:150px">Evento catalizador</th>
-                    <th style="width:44px" aria-label="Acciones"></th>
-                  </tr>
-                </thead>
-                <tbody id="rcm-verbs-tbody">${renderRcmVerbsRows(state.rcmWeeks)}</tbody>
-              </table>
-              <div style="margin-top:10px">
-                <button id="rcm-verbs-add-btn" type="button" class="btn btn--ghost" style="font-size:0.82rem">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span>Agregar semana</span>
+              <div class="settings-rcm-mobile-toolbar">
+                <button type="button" class="btn btn--ghost settings-rcm-mobile-toggle" id="settings-rcm-mobile-toggle" aria-expanded="${isRcmExpanded ? 'true' : 'false'}">
+                  <span>${isRcmExpanded ? 'Ocultar editor' : 'Editar diseño RCM'}</span>
                 </button>
+                ${renderRcmMobileSummary(state.rcmWeeks)}
+              </div>
+              <div class="settings-rcm-editor${isRcmExpanded ? ' is-expanded' : ''}">
+                <div class="settings-card-body settings-card-body--table">
+                  <div class="settings-table-intro">Usa esta tabla para mover semanas y marcar solo los hitos que sí aplican en el ciclo actual.</div>
+                  <div class="settings-table-wrap">
+                    <table class="rcm-verbs-table" id="rcm-verbs-table">
+                      <thead>
+                        <tr>
+                          <th style="width:44px">Sem.</th>
+                          <th style="width:120px">Etapa</th>
+                          <th style="width:130px">Verbo</th>
+                          <th>Descripción</th>
+                          <th style="width:150px">Evento catalizador</th>
+                          <th style="width:44px" aria-label="Acciones"></th>
+                        </tr>
+                      </thead>
+                      <tbody id="rcm-verbs-tbody">${renderRcmVerbsRows(state.rcmWeeks)}</tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="settings-card-footer settings-card-footer--rcm">
+                  <div class="settings-rcm-actions">
+                    <div class="settings-rcm-actions__group">
+                      <button id="rcm-verbs-add-btn" type="button" class="btn btn--ghost settings-rcm-action-btn">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        <span>Agregar semana</span>
+                      </button>
+                      <button id="settings-rcm-verbs-reset-btn" type="button" class="btn btn--ghost settings-rcm-action-btn">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                        <span>Restablecer predeterminados</span>
+                      </button>
+                    </div>
+                    <div class="settings-rcm-actions__group settings-rcm-actions__group--primary">
+                      <button id="settings-rcm-verbs-save-btn" type="button" class="btn settings-rcm-action-btn">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        <span>Guardar verbos</span>
+                      </button>
+                    </div>
+                  </div>
+                  ${renderStatus(state.statuses.verbs)}
+                </div>
               </div>
             </div>
-            <div class="settings-card-footer">
-              <button id="settings-rcm-verbs-save-btn" type="button" class="btn">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                <span>Guardar verbos</span>
-              </button>
-              <button id="settings-rcm-verbs-reset-btn" type="button" class="btn btn--ghost" style="margin-left:8px">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-                <span>Restablecer predeterminados</span>
-              </button>
-              ${renderStatus(state.statuses.verbs)}
-            </div>
-          </div>
+          </section>
+          ` : ''}
         </div>
       </div>
     </section>

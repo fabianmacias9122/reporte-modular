@@ -1,7 +1,6 @@
-const runtimeApiBase = String(window.REPORTE_API_BASE_URL || '').trim();
-const normalizedRuntimeApiBase = runtimeApiBase.replace(/\/$/, '');
+import { buildApiUrl, resolveApiBaseUrl } from './base-url.js';
 
-export const API_BASE_URL = normalizedRuntimeApiBase || window.location.origin;
+export const API_BASE_URL = resolveApiBaseUrl();
 
 import { restoreStoredSession } from '../auth/index.js';
 
@@ -33,7 +32,7 @@ export async function request(path, options = {}) {
   while (attempt < maxAttempts) {
     attempt += 1;
     try {
-      const response = await fetch(`${API_BASE_URL}${path}`, {
+      const response = await fetch(buildApiUrl(path), {
         headers: {
           'Content-Type': 'application/json',
           ...buildActorHeaders(options.headers || {}),

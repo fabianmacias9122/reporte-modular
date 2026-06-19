@@ -21,6 +21,10 @@ import {
 } from './views/settings-shell.js';
 import { getCurrentLang, setLang } from '../../i18n.js';
 
+function canEditOperationalSettings(user) {
+  return Boolean(user && user.isAdmin);
+}
+
 export function createConfiguracionFeature(options = {}) {
   const state = {
     settings: createSettingsState(),
@@ -29,6 +33,9 @@ export function createConfiguracionFeature(options = {}) {
     rcmWeeks: [],
     currentLang: getCurrentLang(),
     currentUser: options.currentUser || null,
+    canEditOperational: canEditOperationalSettings(options.currentUser || null),
+    mobileSection: 'cycle',
+    mobileRcmExpanded: false,
   };
 
   let currentRoot = null;
@@ -73,20 +80,42 @@ export function createConfiguracionFeature(options = {}) {
     }
   }
 
-  async function saveCycle(formData) {
+  function buildCyclePayload(formData) {
     const cycleStartDate = String(formData.get('cycle_start_date') || '').trim();
+    return {
+      cycleStartDate,
+      payload: {
+        cycle_start_date: cycleStartDate,
+        week_start_day: String(formData.get('week_start_day') || '0'),
+        report_grace_hours: String(Math.max(0, parseInt(String(formData.get('report_grace_hours') || '0'), 10) || 0)),
+        process_entry_late_weeks: String(Math.max(0, parseInt(String(formData.get('process_entry_late_weeks') || '14'), 10) || 0)),
+      },
+    };
+  }
+
+  function buildGoalsPayload(formData) {
+    const levantateGoal = Math.max(0, parseInt(String(formData.get('rcm_goal_levantate') || '4'), 10) || 0);
+    const restauracionGoal = Math.max(0, parseInt(String(formData.get('rcm_goal_restauracion') || '3'), 10) || 0);
+    const bautismosGoal = Math.max(0, parseInt(String(formData.get('rcm_goal_bautismos') || '2'), 10) || 0);
+    return {
+      levantateGoal,
+      restauracionGoal,
+      bautismosGoal,
+      payload: {
+        rcm_goal_levantate: String(levantateGoal),
+        rcm_goal_restauracion: String(restauracionGoal),
+        rcm_goal_bautismos: String(bautismosGoal),
+      },
+    };
+  }
+
+  async function saveCycle(formData) {
+    const { cycleStartDate, payload } = buildCyclePayload(formData);
     if (!cycleStartDate) {
       setStatus('cycle', 'Ingresa una fecha.', true, 0);
       render();
       return;
     }
-
-    const payload = {
-      cycle_start_date: cycleStartDate,
-      week_start_day: String(formData.get('week_start_day') || '0'),
-      report_grace_hours: String(Math.max(0, parseInt(String(formData.get('report_grace_hours') || '0'), 10) || 0)),
-      process_entry_late_weeks: String(Math.max(0, parseInt(String(formData.get('process_entry_late_weeks') || '14'), 10) || 0)),
-    };
 
     try {
       const savedSettings = await saveSettings(payload, { requestFn: options.requestFn });
@@ -107,15 +136,52 @@ export function createConfiguracionFeature(options = {}) {
     renderInsights();
   }
 
+  async function saveCycleSection(cycleFormData, goalsFormData) {
+    const { cycleStartDate, payload: cyclePayload } = buildCyclePayload(cycleFormData);
+    if (!cycleStartDate) {
+      setStatus('cycle', 'Ingresa una fecha.', true, 0);
+      render();
+      return;
+    }
+
+    const { levantateGoal, restauracionGoal, bautismosGoal, payload: goalsPayload } = buildGoalsPayload(goalsFormData);
+
+    try {
+      const savedSettings = await saveSettings({
+        ...cyclePayload,
+        ...goalsPayload,
+      }, { requestFn: options.requestFn });
+      state.settings = { ...state.settings, ...savedSettings };
+
+      if (state.currentUser?.assignedCellNumber) {
+        const now = new Date();
+        await saveFriendTrackingGoals({
+          cellNumber: String(state.currentUser.assignedCellNumber),
+          year: String(now.getFullYear()),
+          quarter: String(getCurrentQuarter(now)),
+          levantateGoal,
+          restauracionGoal,
+          bautismosGoal,
+        }, { requestFn: options.requestFn });
+      }
+
+      clearStatus('goals');
+      setStatus('cycle', '✓ Ciclo y metas guardados');
+      render();
+    } catch (error) {
+      setStatus('cycle', error.message || 'Error al guardar la configuración del ciclo.', true, 0);
+      render();
+    }
+  }
+
   async function saveGoals(formData) {
-    const levantateGoal = Math.max(0, parseInt(String(formData.get('rcm_goal_levantate') || '4'), 10) || 0);
-    const restauracionGoal = Math.max(0, parseInt(String(formData.get('rcm_goal_restauracion') || '3'), 10) || 0);
-    const bautismosGoal = Math.max(0, parseInt(String(formData.get('rcm_goal_bautismos') || '2'), 10) || 0);
-    const payload = {
-      rcm_goal_levantate: String(levantateGoal),
-      rcm_goal_restauracion: String(restauracionGoal),
-      rcm_goal_bautismos: String(bautismosGoal),
-    };
+    if (!state.canEditOperational) {
+      setStatus('goals', 'Solo administradores pueden cambiar metas.', true, 0);
+      render();
+      return;
+    }
+
+    const { levantateGoal, restauracionGoal, bautismosGoal, payload } = buildGoalsPayload(formData);
 
     try {
       const savedSettings = await saveSettings(payload, { requestFn: options.requestFn });
@@ -239,6 +305,7 @@ export function createConfiguracionFeature(options = {}) {
     attachSettingsController(currentRoot, {
       preview,
       saveCycle,
+      saveCycleSection,
       saveGoals,
       savePreferences,
       setLanguage: updateLanguage,
@@ -247,6 +314,15 @@ export function createConfiguracionFeature(options = {}) {
       updateRcmWeek,
       saveRcmWeeks,
       resetRcmWeeks: resetRcmWeeksToDefault,
+      getMobileSection: () => state.mobileSection,
+      setMobileSection: (section) => {
+        state.mobileSection = section;
+      },
+      getMobileRcmExpanded: () => state.mobileRcmExpanded,
+      toggleMobileRcmExpanded: () => {
+        state.mobileRcmExpanded = !state.mobileRcmExpanded;
+        render();
+      },
     });
   }
 

@@ -1,6 +1,20 @@
 import { getRcmTotalWeeks, getRcmWeekInfo } from '../../../core/rcm/index.js';
 import { createEmptyCatalogs, findCellByNumber, getCellKids, getCellMembers } from '../../catalogos/models/catalogs-state.js';
 
+function buildReportRcmSnapshot(weekValue) {
+  const info = getRcmWeekInfo(weekValue);
+  const weekNumber = parseInt(String(weekValue || '0'), 10) || 0;
+  return {
+    week: weekNumber,
+    phase: String(info?.phase || '').trim(),
+    phaseLabel: String(info?.phaseLabel || '').trim(),
+    verb: String(info?.verb || '').trim(),
+    event: String(info?.event || '').trim(),
+    rcmKey: String(info?.rcmKey || '').trim(),
+    isEventWeek: Boolean(info?.isEventWeek && info?.event),
+  };
+}
+
 export function createReporteState(initialContext = null) {
   return {
     context: initialContext,
@@ -1490,6 +1504,7 @@ export function buildReportPayload(form, options = {}) {
   });
   const isDraft = options.isDraft !== undefined ? Boolean(options.isDraft) : true;
   const lastStage = String(options.lastStage || '').trim() || 'encabezado';
+  const rcmSnapshot = buildReportRcmSnapshot(form.week);
   return {
     ...createReportFormData(),
     ...form,
@@ -1530,6 +1545,7 @@ export function buildReportPayload(form, options = {}) {
     winRiseEventFriends: attendanceSummary.winRiseEventFriends,
     winBaptizedFriends: attendanceSummary.winBaptizedFriends,
     reachSupervisorVisits,
+    rcmSnapshot,
     _draft: isDraft,
     lastStage,
   };

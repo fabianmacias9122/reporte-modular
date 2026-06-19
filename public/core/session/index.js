@@ -4,6 +4,8 @@ import { applyRcmWeeksConfig, resetRcmWeeks } from '../rcm/index.js';
 import { fetchReports } from '../../features/reporte/data/reporte.repository.js';
 import { getQuarterWeekNumber } from '../../features/reporte/models/reporte-state.js';
 
+const FEATURE_MODULE_VERSION = 'v=20260619-settings-layout-29';
+
 const appState = {
   rootSelector: '#app-root',
   currentUser: null,
@@ -43,6 +45,15 @@ function clearGlobalGraceBannerTimer() {
     clearInterval(globalGraceBannerTimer);
     globalGraceBannerTimer = null;
   }
+}
+
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    }),
+  ]);
 }
 
 function parseReportDateValue(dateValue = '') {
@@ -211,11 +222,11 @@ async function loadFeatureModules() {
     reporteModule,
     settingsRepositoryModule,
   ] = await Promise.all([
-    import('../../features/catalogos/index.js'),
-    import('../../features/configuracion/index.js'),
-    import('../../features/seguimiento/index.js'),
-    import('../../features/reporte/index.js'),
-    import('../../features/configuracion/data/settings.repository.js'),
+    import(`../../features/catalogos/index.js?${FEATURE_MODULE_VERSION}`),
+    import(`../../features/configuracion/index.js?${FEATURE_MODULE_VERSION}`),
+    import(`../../features/seguimiento/index.js?${FEATURE_MODULE_VERSION}`),
+    import(`../../features/reporte/index.js?${FEATURE_MODULE_VERSION}`),
+    import(`../../features/configuracion/data/settings.repository.js?${FEATURE_MODULE_VERSION}`),
   ]);
 
   return {
@@ -240,9 +251,13 @@ async function mountActiveFeature(root) {
   if (!root) return;
 
   showSplash(appState.currentUser ? 'Cargando tu sesión…' : 'Despertando el servidor, un momento.');
+  let bootStage = 'inicio';
   try {
+    bootStage = 'navegacion';
     updateShellNavigation();
 
+    bootStage = 'modulos';
+    showSplash('Cargando módulos...');
     const {
       createCatalogosFeature,
       createConfiguracionFeature,
@@ -251,6 +266,8 @@ async function mountActiveFeature(root) {
       fetchSettings,
     } = await loadFeatureModules();
 
+    bootStage = 'datos';
+    showSplash('Cargando configuración y reportes...');
     const [settings, reports] = await Promise.all([
       fetchSettings().catch(() => ({})),
       fetchReports().catch(() => []),
@@ -278,10 +295,18 @@ async function mountActiveFeature(root) {
       }),
     };
 
+    bootStage = `vista:${appState.activeFeatureKey}`;
+    showSplash('Renderizando vista principal...');
     const nextFeature = features[appState.activeFeatureKey];
+    if (!nextFeature || typeof nextFeature.mount !== 'function') {
+      throw new Error(`Feature inválida para ${appState.activeFeatureKey}`);
+    }
     appState.activeFeature = nextFeature;
     await nextFeature.mount(root);
     syncGlobalGraceBanner(root);
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : String(error || 'Error desconocido');
+    throw new Error(`[${bootStage}] ${baseMessage}`);
   } finally {
     hideSplash();
   }
@@ -291,6 +316,7 @@ export async function bootstrapApp(options = {}) {
   appState.rootSelector = options.rootSelector || appState.rootSelector;
   const root = document.querySelector(appState.rootSelector);
   if (!root) return;
+  const feedback = document.querySelector('#feedback');
   const globalGraceBannerClose = document.querySelector('#global-grace-banner-close');
   const globalGraceBannerCapture = document.querySelector('#global-grace-banner-capture');
 
@@ -299,10 +325,10 @@ export async function bootstrapApp(options = {}) {
   loginExperience.init();
   appState.currentUser = restoreStoredSession();
   if (!appState.currentUser) {
-    // Show login immediately after sign out; splash is for async feature boot only.
-    hideSplash();
     appState.currentUser = await loginExperience.resolveSession();
   }
+  // Hide login as soon as credentials are accepted to avoid a stuck-looking overlay.
+  loginExperience.hide();
 
   const userChip = document.querySelector('#user-chip');
   if (userChip) userChip.addEventListener('click', () => {
@@ -351,6 +377,25 @@ export async function bootstrapApp(options = {}) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  await mountActiveFeature(root);
-  loginExperience.hide();
+  try {
+    if (feedback) {
+      feedback.hidden = true;
+      feedback.textContent = '';
+    }
+    await withTimeout(
+      mountActiveFeature(root),
+      45000,
+      'Tiempo de carga agotado al iniciar la aplicación.',
+    );
+  } catch (error) {
+    console.error('Failed to bootstrap app after login.', error);
+    hideSplash();
+    clearStoredSession();
+    loginExperience.reset();
+    if (feedback) {
+      const detail = error instanceof Error ? error.message : String(error || 'Error desconocido');
+      feedback.textContent = `No se pudo cargar la aplicación: ${detail}`;
+      feedback.hidden = false;
+    }
+  }
 }
