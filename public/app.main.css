@@ -4667,7 +4667,13 @@ input[type="checkbox"]:disabled { opacity: 0.28; cursor: not-allowed; }
 
 .settings-cycle-basics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.settings-cycle-top-row,
+.settings-cycle-compact-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 10px;
 }
 
@@ -5662,7 +5668,8 @@ input[type="checkbox"]:disabled { opacity: 0.28; cursor: not-allowed; }
 }
 
 @media (max-width: 960px) {
-  .settings-cycle-basics {
+  .settings-cycle-top-row,
+  .settings-cycle-compact-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -5791,7 +5798,8 @@ input[type="checkbox"]:disabled { opacity: 0.28; cursor: not-allowed; }
 
   .settings-cycle-layout,
   .settings-cycle-secondary,
-  .settings-cycle-basics,
+  .settings-cycle-top-row,
+  .settings-cycle-compact-row,
   .settings-metrics-grid,
   .settings-card-body--preferences .settings-toggle-group {
     grid-template-columns: minmax(0, 1fr);

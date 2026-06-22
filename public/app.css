@@ -689,7 +689,13 @@ body[data-active-stage="culto"] #copy-planning-to-reach { display: none !importa
 
 .settings-cycle-basics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.settings-cycle-top-row,
+.settings-cycle-compact-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 10px;
 }
 
@@ -1096,7 +1102,8 @@ body[data-active-stage="culto"] #copy-planning-to-reach { display: none !importa
 }
 
 @media (max-width: 960px) {
-  .settings-cycle-basics {
+  .settings-cycle-top-row,
+  .settings-cycle-compact-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1225,7 +1232,8 @@ body[data-active-stage="culto"] #copy-planning-to-reach { display: none !importa
 
   .settings-cycle-layout,
   .settings-cycle-secondary,
-  .settings-cycle-basics,
+  .settings-cycle-top-row,
+  .settings-cycle-compact-row,
   .settings-compact-grid,
   .settings-metrics-grid,
   .settings-card-body--preferences .settings-toggle-group {

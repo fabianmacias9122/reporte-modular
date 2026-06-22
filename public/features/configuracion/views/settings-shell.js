@@ -288,23 +288,25 @@ export function renderSettingsShell(state) {
               <div class="settings-card-body">
                 <div class="settings-cycle-layout">
                   <div class="settings-cycle-basics">
-                    <div class="settings-field-block">
-                      <label class="settings-label" for="setting-cycle-start">Fecha de inicio del ciclo</label>
-                      <input id="setting-cycle-start" name="cycle_start_date" type="date" class="settings-input" form="settings-cycle-form" value="${escapeHtml(settings.cycle_start_date || '')}">
-                    </div>
-                    <div class="settings-field-block">
-                      <label class="settings-label" for="setting-week-start-day">Día de inicio de semana</label>
-                      <select id="setting-week-start-day" name="week_start_day" class="settings-input" form="settings-cycle-form">
-                        ${[
-                          ['0', 'Domingo'],
-                          ['1', 'Lunes'],
-                          ['2', 'Martes'],
-                          ['3', 'Miércoles'],
-                          ['4', 'Jueves'],
-                          ['5', 'Viernes'],
-                          ['6', 'Sábado'],
-                        ].map(([value, label]) => `<option value="${value}"${String(settings.week_start_day) === value ? ' selected' : ''}>${label}</option>`).join('')}
-                      </select>
+                    <div class="settings-cycle-top-row">
+                      <div class="settings-field-block">
+                        <label class="settings-label" for="setting-cycle-start">Fecha de inicio del ciclo</label>
+                        <input id="setting-cycle-start" name="cycle_start_date" type="date" class="settings-input" form="settings-cycle-form" value="${escapeHtml(settings.cycle_start_date || '')}">
+                      </div>
+                      <div class="settings-field-block">
+                        <label class="settings-label" for="setting-week-start-day">Día de inicio de semana</label>
+                        <select id="setting-week-start-day" name="week_start_day" class="settings-input" form="settings-cycle-form">
+                          ${[
+                            ['0', 'Domingo'],
+                            ['1', 'Lunes'],
+                            ['2', 'Martes'],
+                            ['3', 'Miércoles'],
+                            ['4', 'Jueves'],
+                            ['5', 'Viernes'],
+                            ['6', 'Sábado'],
+                          ].map(([value, label]) => `<option value="${value}"${String(settings.week_start_day) === value ? ' selected' : ''}>${label}</option>`).join('')}
+                        </select>
+                      </div>
                     </div>
                     <div class="settings-subsection settings-subsection--goals-block">
                       <div class="settings-subsection-head">
@@ -332,15 +334,17 @@ export function renderSettingsShell(state) {
                         </div>
                       </form>
                     </div>
-                    <div class="settings-field-block settings-field-block--compact">
-                      <label class="settings-label" for="setting-grace-hours">Horas de gracia al inicio de semana</label>
-                      <input id="setting-grace-hours" name="report_grace_hours" type="number" min="0" max="48" step="1" class="settings-input settings-input--compact" form="settings-cycle-form" placeholder="0" value="${escapeHtml(settings.report_grace_hours || '0')}">
-                      <p class="settings-help-text">Durante este tiempo el sistema puede sugerir la semana anterior.</p>
-                    </div>
-                    <div class="settings-field-block settings-field-block--compact">
-                      <label class="settings-label" for="setting-process-late-weeks">Prórroga para anotar tardío</label>
-                      <input id="setting-process-late-weeks" name="process_entry_late_weeks" type="number" min="0" max="14" step="1" class="settings-input settings-input--compact" form="settings-cycle-form" placeholder="0" value="${escapeHtml(settings.process_entry_late_weeks || '14')}">
-                      <p class="settings-help-text">Semanas extra para registrar proceso sin contar asistencia.</p>
+                    <div class="settings-cycle-compact-row">
+                      <div class="settings-field-block settings-field-block--compact">
+                        <label class="settings-label" for="setting-grace-hours">Horas de gracia al inicio de semana</label>
+                        <input id="setting-grace-hours" name="report_grace_hours" type="number" min="0" max="48" step="1" class="settings-input settings-input--compact" form="settings-cycle-form" placeholder="0" value="${escapeHtml(settings.report_grace_hours || '0')}">
+                        <p class="settings-help-text">Durante este tiempo el sistema puede sugerir la semana anterior.</p>
+                      </div>
+                      <div class="settings-field-block settings-field-block--compact">
+                        <label class="settings-label" for="setting-process-late-weeks">Prórroga para anotar tardío</label>
+                        <input id="setting-process-late-weeks" name="process_entry_late_weeks" type="number" min="0" max="14" step="1" class="settings-input settings-input--compact" form="settings-cycle-form" placeholder="0" value="${escapeHtml(settings.process_entry_late_weeks || '14')}">
+                        <p class="settings-help-text">Semanas extra para registrar proceso sin contar asistencia.</p>
+                      </div>
                     </div>
                   </div>
                   <div class="settings-cycle-secondary">
