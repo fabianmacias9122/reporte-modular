@@ -1,5 +1,6 @@
 import { attachSeguimientoController } from './controllers/seguimiento.controller.js';
 import { request } from '../../core/api/index.js';
+import { hideSplash, showSplash } from '../../core/session/index.js';
 import { getRcmWeekInfo, getRcmWeeksDefaultClone } from '../../core/rcm/index.js';
 import { fetchCatalogs } from '../catalogos/data/catalogos.repository.js';
 import { getCellMembers } from '../catalogos/models/catalogs-state.js';
@@ -1922,7 +1923,11 @@ export function createSeguimientoFeature(options = {}) {
 
   async function loadMetas() {
     syncMetasCellFilter();
+    const shouldUseSplash = !state.metasData;
     state.metasLoading = true;
+    if (shouldUseSplash) {
+      showSplash('Cargando metas...');
+    }
     render();
     try {
       const params = buildMetasApiParams(state.metasCellFilter);
@@ -1962,6 +1967,9 @@ export function createSeguimientoFeature(options = {}) {
       state.isControlDetailOpen = false;
     } finally {
       state.metasLoading = false;
+      if (shouldUseSplash) {
+        hideSplash();
+      }
     }
     render();
   }

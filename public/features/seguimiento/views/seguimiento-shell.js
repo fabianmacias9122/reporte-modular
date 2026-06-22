@@ -724,7 +724,6 @@ function renderMetasPanel(state) {
             ${scope.year && scope.quarter ? `<span class="count-chip">Q${escapeHtml(String(scope.quarter))}/${escapeHtml(String(scope.year))}</span>` : ''}
           </div>
         </div>
-        ${loading && !metas ? '<p class="empty-state" style="padding:16px 0">Cargando datos…</p>' : ''}
         ${!loading && !metas ? '<p class="empty-state" style="padding:16px 0">Sin datos para el periodo actual.</p>' : ''}
         ${metas ? `
           <div id="friend-tracking-summary-grid" class="summary-grid">

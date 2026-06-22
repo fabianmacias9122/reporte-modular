@@ -26,7 +26,7 @@ const FEATURE_LABELS = {
   configuracion: 'Configuración',
 };
 
-function showSplash(message = 'Despertando el servidor, un momento.') {
+export function showSplash(message = 'Despertando el servidor, un momento.') {
   const splash = document.querySelector('#app-splash');
   const subtitle = document.querySelector('#app-splash-sub');
   if (subtitle) {
@@ -35,7 +35,7 @@ function showSplash(message = 'Despertando el servidor, un momento.') {
   if (splash) splash.classList.remove('is-hidden');
 }
 
-function hideSplash() {
+export function hideSplash() {
   const splash = document.querySelector('#app-splash');
   if (splash) splash.classList.add('is-hidden');
 }
