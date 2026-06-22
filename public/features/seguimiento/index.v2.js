@@ -77,6 +77,13 @@ function formatTrackingDateLabel(value) {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
+function formatAttendanceDetailDateLabel(value) {
+  if (!value) return '';
+  const parsed = new Date(`${String(value)}T12:00:00`);
+  if (!Number.isFinite(parsed.getTime())) return String(value);
+  return parsed.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+}
+
 function formatTrackingRangeLabel(start, end) {
   const startLabel = formatTrackingDateLabel(start);
   const endLabel = formatTrackingDateLabel(end);
@@ -288,7 +295,7 @@ import {
   selectSeguimientoCards,
   selectSeguimientoSummary,
 } from './models/seguimiento-state.js';
-import { renderSeguimientoShell } from './views/seguimiento-shell.v2.js?v=20260622-reporte-preview-collapse-5';
+import { renderSeguimientoShell } from './views/seguimiento-shell.v2.js?v=20260622-seguimiento-attendance-detail-6';
 
 const SEGUIMIENTO_SHOW_OFFERING_STORAGE_KEY = 'segTotals.showOffering';
 
@@ -686,6 +693,42 @@ function aggregateMetrics(reportsList) {
   return metrics;
 }
 
+function aggregateMetricsExtended(reportsList) {
+  const normalizedReports = Array.isArray(reportsList) ? reportsList : [];
+  const weeksReported = normalizedReports.length;
+  const base = aggregateMetrics(normalizedReports);
+  const average = (value) => (weeksReported > 0 ? Math.round((Number(value || 0) / weeksReported) * 10) / 10 : 0);
+  const memberWeeks = new Map();
+
+  normalizedReports.forEach((report) => {
+    const entries = Array.isArray(report?.formData?.memberAttendance) ? report.formData.memberAttendance : [];
+    entries.forEach((entry) => {
+      const key = String(entry?.personId || entry?.memberId || entry?.name || entry?.memberName || '').trim();
+      if (!key) return;
+      const record = memberWeeks.get(key) || { present: 0, total: 0 };
+      record.total += 1;
+      if (entry?.planningAttended || String(entry?.planningStatus || '').toLowerCase() === 'service') {
+        record.present += 1;
+      }
+      memberWeeks.set(key, record);
+    });
+  });
+
+  const minWeeks = Math.max(1, Math.ceil(weeksReported * 0.5));
+  const consistentMembers = [...memberWeeks.values()].filter((entry) => entry.total >= minWeeks && entry.present >= Math.ceil(entry.total * 0.5)).length;
+
+  return {
+    ...base,
+    weeksReported,
+    consistentMembers,
+    avgPlanning: average(base.planningPresent),
+    avgReachMembers: average(base.reachMembers),
+    avgReachVisitors: average(base.reachVisitors),
+    avgSundayMembers: average(base.sundayMembers),
+    avgSundayVisitors: average(base.sundayVisitors),
+  };
+}
+
 function getReportYear(report) {
   const reportDate = getReportDate(report);
   return reportDate ? reportDate.slice(0, 4) : String(new Date().getFullYear());
@@ -853,6 +896,190 @@ function parseDashboardPeriodKey(periodKey, timeScope, settings) {
 function getDashboardScopeLabel(state) {
   const activeScope = (Array.isArray(state.scopeTabs) ? state.scopeTabs : []).find((tab) => tab.key === state.accessScope) || null;
   return activeScope?.sublabel || activeScope?.label || '';
+}
+
+function normalizeDashboardAttendanceKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hasAttendanceStage(formData, stageName) {
+  const order = ['encabezado', 'planificacion', 'alcance', 'culto', 'cierre'];
+  if (formData && formData._draft !== true && formData._draft !== 'true') return true;
+  const lastStage = String(formData?.lastStage || '').trim();
+  if (!lastStage) return false;
+  return order.indexOf(lastStage) >= order.indexOf(stageName);
+}
+
+function buildDashboardAttendancePeriodLabel(timeScope, selectedMeta = {}) {
+  if (timeScope === 'year') return `Año ${selectedMeta?.year || ''}`.trim();
+  if (timeScope === 'quarter') {
+    const quarterLabel = selectedMeta?.quarter === '1'
+      ? 'Ene-Abr'
+      : selectedMeta?.quarter === '2'
+        ? 'May-Ago'
+        : 'Sep-Dic';
+    return `Cuatrimestre ${quarterLabel} ${selectedMeta?.year || ''}`.trim();
+  }
+  const weekInfo = getRcmWeekInfo(selectedMeta?.week);
+  return weekInfo?.verb
+    ? `Semana ${selectedMeta?.week || ''} · ${weekInfo.verb}`.trim()
+    : `Semana ${selectedMeta?.week || ''}`.trim();
+}
+
+function buildDashboardAttendanceDetail(state, kind, detailKey) {
+  const dashboardData = state.dashboardData || {};
+  const reports = Array.isArray(dashboardData.filteredReports) ? [...dashboardData.filteredReports] : [];
+  const normalizedKey = normalizeDashboardAttendanceKey(detailKey);
+  if (!normalizedKey || !reports.length) return null;
+
+  const timeScope = String(dashboardData.timeScope || 'week');
+  const selectedMeta = dashboardData.selectedMeta || {};
+  const sortedReports = reports.sort((left, right) => {
+    const leftKey = `${getReportYear(left)}-${String(getReportWeek(left) || '').padStart(2, '0')}`;
+    const rightKey = `${getReportYear(right)}-${String(getReportWeek(right) || '').padStart(2, '0')}`;
+    return leftKey.localeCompare(rightKey);
+  });
+  const isMember = String(kind || '').trim().toLowerCase() !== 'friend';
+  const periodLabel = buildDashboardAttendancePeriodLabel(timeScope, selectedMeta);
+
+  if (isMember) {
+    const detail = {
+      detailKey: normalizedKey,
+      kind: 'member',
+      name: '',
+      periodLabel,
+      totalWeeks: 0,
+      totalFaltas: 0,
+      totalJust: 0,
+      totalP: 0,
+      totalA: 0,
+      totalC: 0,
+      appliedP: 0,
+      appliedA: 0,
+      appliedC: 0,
+      avgPct: 0,
+      rows: [],
+    };
+
+    const stageState = (statusValue, attended) => {
+      const normalizedStatus = String(statusValue || '').toLowerCase();
+      if (['absent', 'justified', 'present', 'service'].includes(normalizedStatus)) return normalizedStatus;
+      return attended ? 'present' : 'pending';
+    };
+    const isPresentLike = (value) => value === 'present' || value === 'service';
+    const isAbsentLike = (value) => value === 'absent' || value === 'justified';
+
+    sortedReports.forEach((report) => {
+      const formData = report?.formData || {};
+      const members = Array.isArray(formData.memberAttendance) ? formData.memberAttendance : [];
+      const entry = members.find((memberEntry) => {
+        const personId = String(memberEntry?.personId || '').trim();
+        return (personId && normalizeDashboardAttendanceKey(personId) === normalizedKey)
+          || normalizeDashboardAttendanceKey(memberEntry?.name) === normalizedKey;
+      });
+      if (!entry) return;
+
+      detail.name = detail.name || String(entry?.name || '').trim();
+      detail.totalWeeks += 1;
+      const planningApplied = hasAttendanceStage(formData, 'planificacion');
+      const reachApplied = hasAttendanceStage(formData, 'alcance');
+      const sundayApplied = hasAttendanceStage(formData, 'culto');
+      const planning = stageState(entry?.planningStatus, entry?.planningAttended);
+      const reach = stageState(entry?.reachStatus, entry?.reachAttended);
+      const sunday = stageState(entry?.sundayStatus, entry?.sundayAttended);
+
+      if (planningApplied) {
+        detail.appliedP += 1;
+        if (isPresentLike(planning)) detail.totalP += 1;
+      }
+      if (reachApplied) {
+        detail.appliedA += 1;
+        if (isPresentLike(reach)) detail.totalA += 1;
+      }
+      if (sundayApplied) {
+        detail.appliedC += 1;
+        if (isPresentLike(sunday)) detail.totalC += 1;
+      }
+
+      [planningApplied ? planning : null, reachApplied ? reach : null, sundayApplied ? sunday : null].forEach((stage) => {
+        if (!stage) return;
+        if (isAbsentLike(stage)) detail.totalFaltas += 1;
+        if (stage === 'justified') detail.totalJust += 1;
+      });
+
+      detail.rows.push({
+        weekNum: getReportWeek(report),
+        yearNum: getReportYear(report),
+        quarter: getReportQuarter(report),
+        dateLabel: getReportDate(report) ? formatAttendanceDetailDateLabel(getReportDate(report)) : '',
+        planning,
+        reach,
+        sunday,
+        planApp: planningApplied,
+        reachApp: reachApplied,
+        sundayApp: sundayApplied,
+      });
+    });
+
+    if (!detail.rows.length) return null;
+    const totalApplied = detail.appliedP + detail.appliedA + detail.appliedC;
+    detail.avgPct = totalApplied > 0 ? Math.round(((detail.totalP + detail.totalA + detail.totalC) / totalApplied) * 100) : 0;
+    return detail;
+  }
+
+  const detail = {
+    detailKey: normalizedKey,
+    kind: 'friend',
+    name: '',
+    kindLabel: 'Amigo',
+    periodLabel,
+    totalVisits: 0,
+    totalReach: 0,
+    totalSunday: 0,
+    reachPct: 0,
+    sundayPct: 0,
+    overallPct: 0,
+    converted: false,
+    invitedBy: '',
+    lateRegistration: false,
+    rows: [],
+  };
+
+  sortedReports.forEach((report) => {
+    const formData = report?.formData || {};
+    const visitors = Array.isArray(formData.visitors) ? formData.visitors : [];
+    const entry = visitors.find((visitorEntry) => normalizeDashboardAttendanceKey(visitorEntry?.name) === normalizedKey);
+    if (!entry) return;
+
+    detail.name = detail.name || String(entry?.name || '').trim();
+    if (String(entry?.kind || 'amigo').toLowerCase() === 'visita') detail.kindLabel = 'Visita';
+    detail.totalVisits += 1;
+    if (entry?.reachAttended) detail.totalReach += 1;
+    if (entry?.sundayAttended) detail.totalSunday += 1;
+    if (entry?.converted) detail.converted = true;
+    if (entry?.lateRegistration) detail.lateRegistration = true;
+    if (!detail.invitedBy && entry?.invitedBy) detail.invitedBy = String(entry.invitedBy).trim();
+
+    detail.rows.push({
+      weekNum: getReportWeek(report),
+      yearNum: getReportYear(report),
+      quarter: getReportQuarter(report),
+      dateLabel: getReportDate(report) ? formatAttendanceDetailDateLabel(getReportDate(report)) : '',
+      reach: Boolean(entry?.reachAttended),
+      sunday: Boolean(entry?.sundayAttended),
+    });
+  });
+
+  if (!detail.rows.length) return null;
+  detail.reachPct = Math.round((detail.totalReach / detail.totalVisits) * 100);
+  detail.sundayPct = Math.round((detail.totalSunday / detail.totalVisits) * 100);
+  detail.overallPct = Math.round(((detail.totalReach + detail.totalSunday) / (detail.totalVisits * 2)) * 100);
+  return detail;
 }
 
 function getDashboardAlertsData(scopedReports, filteredReports, timeScope, selectedPeriod) {
@@ -1046,15 +1273,17 @@ function getDashboardData(state) {
   if (timeScope === 'quarter') {
     title = `Cuatrimestre Q${selectedMeta.quarter} ${selectedMeta.year}`;
     chip = `Q${selectedMeta.quarter} ${selectedMeta.year}`;
+    const extendedMetrics = aggregateMetricsExtended(filteredReports);
     summaryCards = [
-      { label: 'Reportes', value: filteredReports.length, hint: 'capturados en el cuatrimestre' },
-      { label: 'Células activas', value: reportedCellsCount, hint: 'con al menos un reporte' },
-      { label: 'Prom. alcance', value: reportedCellsCount ? Math.round(totalReach / Math.max(1, reportedCellsCount)) : 0, hint: 'promedio por célula', accent: 'accent-success' },
-      { label: 'Prom. culto', value: reportedCellsCount ? Math.round(totalSunday / Math.max(1, reportedCellsCount)) : 0, hint: 'promedio por célula', accent: 'accent-success' },
+      { label: 'Sem. reportadas', value: extendedMetrics.weeksReported, hint: 'Semanas con reporte en el cuatrimestre' },
+      { label: 'Hermanos consistentes', value: extendedMetrics.consistentMembers, hint: 'Presentes en ≥ 50% de semanas', accent: 'accent-success' },
+      { label: 'Prom. planeación', value: extendedMetrics.avgPlanning, hint: 'Promedio semanal de hermanos' },
+      { label: 'Prom. alcance', value: extendedMetrics.avgReachMembers, hint: 'Promedio semanal de hermanos en alcance' },
+      { label: 'Prom. amigos · alcance', value: extendedMetrics.avgReachVisitors, hint: 'Promedio semanal de amigos en alcance' },
+      { label: 'Prom. culto', value: extendedMetrics.avgSundayMembers, hint: 'Promedio semanal de hermanos en culto' },
+      { label: 'Prom. amigos · culto', value: extendedMetrics.avgSundayVisitors, hint: 'Promedio semanal de amigos en culto' },
       { label: 'Conversiones', value: periodMetrics.reachConversions || 0, hint: 'decisiones de fe', accent: 'accent-faith' },
-      { label: 'Bautismos', value: baptisms, hint: 'registrados en el período', accent: 'accent-faith' },
-      { label: 'Planeación', value: periodMetrics.planningPresent || 0, hint: 'asistencia acumulada' },
-      { label: 'Visitas', value: visitsTotal, hint: 'alcance + culto' },
+      { label: 'Bautismos', value: baptisms, hint: 'Bautismos en el cuatrimestre', accent: 'accent-faith' },
     ];
   } else if (timeScope === 'year') {
     title = `Año ${selectedMeta.year}`;
@@ -1492,6 +1721,10 @@ export function createSeguimientoFeature(options = {}) {
     dashboardAttendanceTab: 'hermanos',
     showAllDashboardSummaryCards: false,
     dashboardData: null,
+    attendanceDetailKind: '',
+    attendanceDetailKey: '',
+    attendanceDetailEntry: null,
+    isAttendanceDetailOpen: false,
     previewReport: null,
     previewMode: 'default',
     isPreviewOpen: false,
@@ -1529,6 +1762,14 @@ export function createSeguimientoFeature(options = {}) {
     state.weekContext = getWeekContext(state);
     state.totals = getTotalsData(state);
     state.dashboardData = getDashboardData(state);
+    if (state.attendanceDetailKey) {
+      state.attendanceDetailEntry = buildDashboardAttendanceDetail(state, state.attendanceDetailKind, state.attendanceDetailKey);
+      if (!state.attendanceDetailEntry) {
+        state.attendanceDetailKind = '';
+        state.attendanceDetailKey = '';
+        state.isAttendanceDetailOpen = false;
+      }
+    }
     state.supervisorData = getSupervisorWeeklyData(state);
     if (state.totals?.selectedScope) {
       state.totalsScope = state.totals.selectedScope;
@@ -1728,6 +1969,27 @@ export function createSeguimientoFeature(options = {}) {
     render();
   }
 
+  function openDashboardAttendanceDetail(kind, detailKey) {
+    const nextKind = String(kind || '').trim().toLowerCase() === 'friend' ? 'friend' : 'member';
+    const nextKey = String(detailKey || '').trim();
+    if (!nextKey) return;
+    const entry = buildDashboardAttendanceDetail(state, nextKind, nextKey);
+    if (!entry) return;
+    state.attendanceDetailKind = nextKind;
+    state.attendanceDetailKey = nextKey;
+    state.attendanceDetailEntry = entry;
+    state.isAttendanceDetailOpen = true;
+    render();
+  }
+
+  function closeDashboardAttendanceDetail() {
+    state.isAttendanceDetailOpen = false;
+    state.attendanceDetailKind = '';
+    state.attendanceDetailKey = '';
+    state.attendanceDetailEntry = null;
+    render();
+  }
+
   function toggleDashboardSummaryCards() {
     state.showAllDashboardSummaryCards = !state.showAllDashboardSummaryCards;
     render();
@@ -1894,6 +2156,14 @@ export function createSeguimientoFeature(options = {}) {
 
   function render() {
     if (!currentRoot) return;
+    if (state.attendanceDetailKey) {
+      state.attendanceDetailEntry = buildDashboardAttendanceDetail(state, state.attendanceDetailKind, state.attendanceDetailKey);
+      if (!state.attendanceDetailEntry) {
+        state.isAttendanceDetailOpen = false;
+        state.attendanceDetailKind = '';
+        state.attendanceDetailKey = '';
+      }
+    }
     if (state.controlDetailKey) {
       state.controlDetailEntry = state.processControlEntries.find((entry) => entry.key === state.controlDetailKey) || null;
       if (!state.controlDetailEntry) {
@@ -1911,6 +2181,8 @@ export function createSeguimientoFeature(options = {}) {
       changeDashboardTimeScope,
       changeDashboardPeriod,
       changeDashboardAttendanceTab,
+      openDashboardAttendanceDetail,
+      closeDashboardAttendanceDetail,
       toggleDashboardSummaryCards,
       toggleMetasSummaryCards,
       changeSupervisor,
@@ -1943,6 +2215,14 @@ export function createSeguimientoFeature(options = {}) {
         controlDialog.showModal();
       } else if (!state.isControlDetailOpen && controlDialog.open) {
         controlDialog.close();
+      }
+    }
+    const attendanceDialog = currentRoot.querySelector('#seguimiento-attendance-detail-dialog');
+    if (attendanceDialog instanceof HTMLDialogElement) {
+      if (state.isAttendanceDetailOpen && !attendanceDialog.open) {
+        attendanceDialog.showModal();
+      } else if (!state.isAttendanceDetailOpen && attendanceDialog.open) {
+        attendanceDialog.close();
       }
     }
   }

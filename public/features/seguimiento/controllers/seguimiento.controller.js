@@ -83,6 +83,35 @@ function sanitizeFileName(value) {
 export function attachSeguimientoController(root, actions) {
   root.__seguimientoActions = actions;
 
+  function closeTrendPopovers() {
+    root.querySelectorAll('.trend-td-hover.is-pop-open').forEach((cell) => {
+      cell.classList.remove('is-pop-open');
+      cell.style.removeProperty('--pop-left');
+      cell.style.removeProperty('--pop-top');
+    });
+  }
+
+  function openTrendPopover(cell) {
+    if (!(cell instanceof HTMLElement)) return;
+    const pop = cell.querySelector('.trend-pop');
+    if (!(pop instanceof HTMLElement)) return;
+    closeTrendPopovers();
+    cell.classList.add('is-pop-open');
+    const cellRect = cell.getBoundingClientRect();
+    const popRect = pop.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const maxLeft = Math.max(8, viewportWidth - popRect.width - 8);
+    const left = Math.min(Math.max(8, cellRect.left), maxLeft);
+    const preferredTop = cellRect.bottom + 8;
+    const fallbackTop = cellRect.top - popRect.height - 8;
+    const top = preferredTop + popRect.height <= viewportHeight - 8
+      ? preferredTop
+      : Math.max(8, fallbackTop);
+    cell.style.setProperty('--pop-left', `${Math.round(left)}px`);
+    cell.style.setProperty('--pop-top', `${Math.round(top)}px`);
+  }
+
   function closeSegTabMenu() {
     const menu = root.querySelector('#seg-view-mobile-menu');
     const picker = root.querySelector('#seg-view-mobile-picker');
@@ -177,13 +206,97 @@ export function attachSeguimientoController(root, actions) {
   root.querySelector('#seguimiento-control-detail-done-btn')?.addEventListener('click', () => {
     actions.closeControlDetail();
   });
+
+  const attendanceDetailDialog = root.querySelector('#seguimiento-attendance-detail-dialog');
+  attendanceDetailDialog?.addEventListener('close', () => {
+    actions.closeDashboardAttendanceDetail?.();
+  });
+  attendanceDetailDialog?.addEventListener('click', (event) => {
+    if (event.target === attendanceDetailDialog) {
+      actions.closeDashboardAttendanceDetail?.();
+    }
+  });
+  root.querySelector('#seguimiento-attendance-detail-close-btn')?.addEventListener('click', () => {
+    actions.closeDashboardAttendanceDetail?.();
+  });
+  root.querySelector('#seguimiento-attendance-detail-done-btn')?.addEventListener('click', () => {
+    actions.closeDashboardAttendanceDetail?.();
+  });
+
+  if (!root.__seguimientoTrendPopoversBound) {
+    root.addEventListener('mousemove', (event) => {
+      const cell = event.target.closest('.trend-td-hover');
+      if (!cell || !root.contains(cell)) {
+        closeTrendPopovers();
+        return;
+      }
+      if (!cell.classList.contains('is-pop-open')) {
+        openTrendPopover(cell);
+      }
+    });
+    root.addEventListener('mousemove', (event) => {
+      const cell = event.target.closest('.trend-td-hover');
+      if (!cell || !root.contains(cell)) {
+        closeTrendPopovers();
+        return;
+      }
+      if (!cell.classList.contains('is-pop-open')) {
+        openTrendPopover(cell);
+      }
+    });
+    root.addEventListener('mouseover', (event) => {
+      const cell = event.target.closest('.trend-td-hover');
+      if (!cell || !root.contains(cell)) return;
+      openTrendPopover(cell);
+    });
+    root.addEventListener('mouseout', (event) => {
+      const cell = event.target.closest('.trend-td-hover');
+      if (!cell || !root.contains(cell)) return;
+      const related = event.relatedTarget;
+      if (related instanceof Node && cell.contains(related)) return;
+      cell.classList.remove('is-pop-open');
+      cell.style.removeProperty('--pop-left');
+      cell.style.removeProperty('--pop-top');
+    });
+    root.addEventListener('focusin', (event) => {
+      const cell = event.target.closest('.trend-td-hover');
+      if (!cell || !root.contains(cell)) return;
+      openTrendPopover(cell);
+    });
+    root.addEventListener('focusout', (event) => {
+      const cell = event.target.closest('.trend-td-hover');
+      if (!cell || !root.contains(cell)) return;
+      const related = event.relatedTarget;
+      if (related instanceof Node && cell.contains(related)) return;
+      cell.classList.remove('is-pop-open');
+      cell.style.removeProperty('--pop-left');
+      cell.style.removeProperty('--pop-top');
+    });
+    window.addEventListener('scroll', closeTrendPopovers, true);
+    window.addEventListener('resize', closeTrendPopovers);
+    root.__seguimientoTrendPopoversBound = true;
+  }
+
   if (!root.__seguimientoDelegatedClickBound) {
     root.addEventListener('click', async (event) => {
       const currentActions = root.__seguimientoActions;
       if (!currentActions) return;
+      closeTrendPopovers();
       const picker = root.querySelector('#seg-view-mobile-picker');
       if (picker && !picker.contains(event.target)) {
         closeSegTabMenu();
+      }
+
+      const attendanceRow = event.target.closest('tr[data-member-key], tr[data-visitor-key]');
+      if (attendanceRow) {
+        if (attendanceRow.dataset.memberKey) {
+          currentActions.openDashboardAttendanceDetail?.('member', String(attendanceRow.dataset.memberKey || ''));
+          return;
+        }
+        if (attendanceRow.dataset.visitorKey) {
+          currentActions.openDashboardAttendanceDetail?.('friend', String(attendanceRow.dataset.visitorKey || ''));
+          return;
+        }
       }
 
       const button = event.target.closest('button[data-action]');
@@ -220,6 +333,13 @@ export function attachSeguimientoController(root, actions) {
       }
       if (action === 'change-dashboard-attendance-tab') {
         currentActions.changeDashboardAttendanceTab(String(button.dataset.tab || 'hermanos'));
+        return;
+      }
+      if (action === 'open-dashboard-attendance-detail') {
+        currentActions.openDashboardAttendanceDetail?.(
+          String(button.dataset.personKind || 'member'),
+          String(button.dataset.personKey || ''),
+        );
         return;
       }
       if (action === 'toggle-dashboard-summary-cards') {

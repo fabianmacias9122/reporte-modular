@@ -689,7 +689,7 @@ body[data-active-stage="culto"] #copy-planning-to-reach { display: none !importa
 
 .settings-cycle-basics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
 }
 
@@ -5999,13 +5999,15 @@ details.ev-section:not([open]) > .ev-body { display: none; }
 .trend-uniq-row td { background: rgba(99,102,241,0.06) !important; border-top: 1px dashed var(--line) !important; }
 .trend-td-hover { position: relative; cursor: help; }
 .trend-pop {
-  position: fixed; z-index: 9999;
-  left: var(--pop-left, -9999px); top: var(--pop-top, -9999px);
+  position: absolute; z-index: 9999;
+  left: 0; top: calc(100% + 8px);
   background: #ffffff; border: 1px solid var(--line); border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.18);
   padding: 8px 10px; min-width: 160px; max-width: min(280px, calc(100vw - 16px));
   display: none; pointer-events: none; text-align: left;
 }
+.trend-td-hover:hover > .trend-pop,
+.trend-td-hover:focus-within > .trend-pop,
 .trend-td-hover.is-pop-open > .trend-pop { display: block; }
 .trend-pop-title { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .trend-pop-name { display: block; font-size: 0.72rem; color: var(--text); padding: 1px 0; white-space: nowrap; }

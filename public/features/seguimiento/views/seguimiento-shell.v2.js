@@ -195,6 +195,115 @@ function renderControlDetailDialog(scope, entry) {
   `;
 }
 
+function renderAttendanceDetailDialog(entry) {
+  if (!entry) return '';
+  const eventDot = (state, label, applicable = true) => {
+    if (!applicable) return `<span class="mdl-dot mdl-dot-pending" title="${escapeHtml(label)} aún pendiente (no reportado)">-</span>`;
+    if (state === 'present' || state === 'service') return `<span class="mdl-dot mdl-dot-ok" title="${escapeHtml(label)}">✓</span>`;
+    if (state === 'justified') return `<span class="mdl-dot mdl-dot-just" title="Justificado en ${escapeHtml(label)}">J</span>`;
+    if (state === 'absent') return `<span class="mdl-dot mdl-dot-miss" title="Faltó a ${escapeHtml(label)}">✗</span>`;
+    return `<span class="mdl-dot mdl-dot-pending" title="${escapeHtml(label)} sin marcar">-</span>`;
+  };
+  const visitorEventDot = (attended, label) => attended
+    ? `<span class="mdl-dot mdl-dot-ok" title="${escapeHtml(label)}">✓</span>`
+    : `<span class="mdl-dot mdl-dot-miss" title="No asistió a ${escapeHtml(label)}">✗</span>`;
+  const groups = new Map();
+  (Array.isArray(entry.rows) ? entry.rows : []).forEach((row) => {
+    const key = `${row.yearNum}-${row.quarter}`;
+    if (!groups.has(key)) groups.set(key, { year: row.yearNum, quarter: row.quarter, rows: [] });
+    groups.get(key).rows.push(row);
+  });
+  const orderedGroups = Array.from(groups.values()).sort((left, right) => {
+    if (left.year !== right.year) return Number(right.year) - Number(left.year);
+    return Number(right.quarter) - Number(left.quarter);
+  });
+  const bodyMarkup = entry.kind === 'member'
+    ? orderedGroups.map((group, index) => {
+      const rowsDesc = [...group.rows].sort((left, right) => Number(right.weekNum) - Number(left.weekNum));
+      let quarterPresent = 0;
+      let quarterAbsent = 0;
+      let quarterJust = 0;
+      rowsDesc.forEach((row) => {
+        [['planApp', 'planning'], ['reachApp', 'reach'], ['sundayApp', 'sunday']].forEach(([appKey, stateKey]) => {
+          if (!row[appKey]) return;
+          const stateValue = row[stateKey];
+          if (stateValue === 'present' || stateValue === 'service') quarterPresent += 1;
+          else if (stateValue === 'absent') quarterAbsent += 1;
+          else if (stateValue === 'justified') quarterJust += 1;
+        });
+      });
+      return `<details class="mdl-qgroup"${index === 0 ? ' open' : ''}><summary class="mdl-qgroup-summary"><span class="mdl-qgroup-title">Q${escapeHtml(String(group.quarter || ''))} · ${escapeHtml(String(group.year || ''))}</span><span class="mdl-qgroup-stats"><span class="mdl-qchip mdl-qchip-ok" title="Asistencias">${escapeHtml(String(quarterPresent))}✓</span>${quarterAbsent ? `<span class="mdl-qchip mdl-qchip-miss" title="Faltas">${escapeHtml(String(quarterAbsent))}✗</span>` : ''}${quarterJust ? `<span class="mdl-qchip mdl-qchip-just" title="Justificadas">${escapeHtml(String(quarterJust))}J</span>` : ''}<span class="mdl-qchip-weeks">${escapeHtml(String(rowsDesc.length))} sem.</span></span></summary><table class="mdl-table"><thead><tr><th>Sem.</th><th>Fecha</th><th>Plan.</th><th>Alc.</th><th>Culto</th><th>Estado</th></tr></thead><tbody>${rowsDesc.map((row) => {
+        const appliedStates = [];
+        if (row.planApp) appliedStates.push(row.planning);
+        if (row.reachApp) appliedStates.push(row.reach);
+        if (row.sundayApp) appliedStates.push(row.sunday);
+        const presentCount = appliedStates.filter((stateValue) => stateValue === 'present' || stateValue === 'service').length;
+        const absentCount = appliedStates.filter((stateValue) => stateValue === 'absent').length;
+        const justifiedCount = appliedStates.filter((stateValue) => stateValue === 'justified').length;
+        const pendingCount = appliedStates.filter((stateValue) => !['present', 'service', 'absent', 'justified'].includes(stateValue)).length;
+        const allPending = appliedStates.length === 0;
+        const missingApplied = absentCount + justifiedCount;
+        let rowClass = '';
+        let statusBadge = '<span class="mdl-status-badge mdl-status-partial">Parcial</span>';
+        if (allPending) statusBadge = '<span class="mdl-status-badge mdl-status-pending">Pendiente</span>';
+        else if (presentCount === appliedStates.length) statusBadge = '<span class="mdl-status-badge mdl-status-ok">Completo</span>';
+        else if (missingApplied === appliedStates.length) {
+          if (justifiedCount === appliedStates.length) {
+            rowClass = ' mdl-row-just';
+            statusBadge = '<span class="mdl-status-badge mdl-status-just">Justificado</span>';
+          } else {
+            rowClass = ' mdl-row-falta';
+            statusBadge = '<span class="mdl-status-badge mdl-status-absent">Falta</span>';
+          }
+        } else if (pendingCount > 0 && missingApplied === 0) {
+          statusBadge = '<span class="mdl-status-badge mdl-status-pending">En curso</span>';
+        }
+        return `<tr class="${rowClass}"><td class="mdl-week">${escapeHtml(String(row.weekNum || ''))}</td><td class="mdl-date">${escapeHtml(row.dateLabel || '')}</td><td class="mdl-ev">${eventDot(row.planning, 'Planeación', row.planApp)}</td><td class="mdl-ev">${eventDot(row.reach, 'Alcance', row.reachApp)}</td><td class="mdl-ev">${eventDot(row.sunday, 'Culto', row.sundayApp)}</td><td>${statusBadge}</td></tr>`;
+      }).join('')}</tbody></table></details>`;
+    }).join('')
+    : orderedGroups.map((group, index) => {
+      const rowsDesc = [...group.rows].sort((left, right) => Number(right.weekNum) - Number(left.weekNum));
+      let quarterReach = 0;
+      let quarterSunday = 0;
+      rowsDesc.forEach((row) => {
+        if (row.reach) quarterReach += 1;
+        if (row.sunday) quarterSunday += 1;
+      });
+      return `<details class="mdl-qgroup"${index === 0 ? ' open' : ''}><summary class="mdl-qgroup-summary"><span class="mdl-qgroup-title">Q${escapeHtml(String(group.quarter || ''))} · ${escapeHtml(String(group.year || ''))}</span><span class="mdl-qgroup-stats"><span class="mdl-qchip mdl-qchip-ok" title="Alcance">A ${escapeHtml(String(quarterReach))}/${escapeHtml(String(rowsDesc.length))}</span><span class="mdl-qchip mdl-qchip-ok" title="Culto">C ${escapeHtml(String(quarterSunday))}/${escapeHtml(String(rowsDesc.length))}</span><span class="mdl-qchip-weeks">${escapeHtml(String(rowsDesc.length))} sem.</span></span></summary><table class="mdl-table"><thead><tr><th>Sem.</th><th>Fecha</th><th>Alc.</th><th>Culto</th><th>Asistencia</th></tr></thead><tbody>${rowsDesc.map((row) => {
+        const both = row.reach && row.sunday;
+        const none = !row.reach && !row.sunday;
+        const rowClass = none ? ' mdl-row-falta' : '';
+        const statusBadge = both
+          ? '<span class="mdl-status-badge mdl-status-ok">Ambos eventos</span>'
+          : !row.reach && row.sunday
+            ? '<span class="mdl-status-badge mdl-status-partial">Solo culto</span>'
+            : row.reach && !row.sunday
+              ? '<span class="mdl-status-badge mdl-status-partial">Solo alcance</span>'
+              : '<span class="mdl-status-badge mdl-status-absent">No asistió</span>';
+        return `<tr class="${rowClass}"><td class="mdl-week">${escapeHtml(String(row.weekNum || ''))}</td><td class="mdl-date">${escapeHtml(row.dateLabel || '')}</td><td class="mdl-ev">${visitorEventDot(row.reach, 'Alcance')}</td><td class="mdl-ev">${visitorEventDot(row.sunday, 'Culto')}</td><td>${statusBadge}</td></tr>`;
+      }).join('')}</tbody></table></details>`;
+    }).join('');
+  const statsMarkup = entry.kind === 'member'
+    ? `<div class="mdl-stat"><strong>${escapeHtml(String(entry.totalWeeks || 0))}</strong><span>semanas</span></div><div class="mdl-stat"><strong class="${entry.totalFaltas > 0 ? 'mdl-stat-bad' : 'mdl-stat-good'}">${escapeHtml(String(entry.totalFaltas || 0))}</strong><span>faltas${entry.totalJust > 0 ? ` <em>(${escapeHtml(String(entry.totalJust || 0))} just.)</em>` : ''}</span></div><div class="mdl-stat-bar"><span class="mdl-stat-pct">${escapeHtml(String(entry.avgPct || 0))}%</span><div class="attend-bar-track mdl-bar-track"><div class="attend-bar-fill ${entry.avgPct >= 80 ? 'attend-bar-good' : entry.avgPct >= 50 ? 'attend-bar-mid' : 'attend-bar-low'}" style="width:${entry.avgPct || 0}%"></div></div><span class="mdl-stat-label">asistencia promedio</span></div><div class="mdl-stat-events"><span class="mdl-ev-chip mdl-ev-p">Plan. <strong>${escapeHtml(String(entry.totalP || 0))}/${escapeHtml(String(entry.appliedP || 0))}</strong></span><span class="mdl-ev-chip mdl-ev-a">Alc. <strong>${escapeHtml(String(entry.totalA || 0))}/${escapeHtml(String(entry.appliedA || 0))}</strong></span><span class="mdl-ev-chip mdl-ev-c">Culto <strong>${escapeHtml(String(entry.totalC || 0))}/${escapeHtml(String(entry.appliedC || 0))}</strong></span></div>`
+    : `<div class="mdl-stat"><strong>${escapeHtml(String(entry.totalVisits || 0))}</strong><span>visitas</span></div><div class="mdl-stat"><strong class="mdl-stat-good">${entry.converted ? 'Sí' : 'No'}</strong><span>convertido</span></div>${entry.lateRegistration ? '<div class="mdl-stat"><strong class="mdl-stat-warn">Sí</strong><span>anotado tardío</span></div>' : ''}${entry.invitedBy ? `<div class="mdl-stat"><strong style="font-size:1rem">${escapeHtml(entry.invitedBy)}</strong><span>lo invitó</span></div>` : ''}<div class="mdl-stat-bar"><span class="mdl-stat-pct">${escapeHtml(String(entry.overallPct || 0))}%</span><div class="attend-bar-track mdl-bar-track"><div class="attend-bar-fill ${entry.overallPct >= 80 ? 'attend-bar-good' : entry.overallPct >= 50 ? 'attend-bar-mid' : 'attend-bar-low'}" style="width:${entry.overallPct || 0}%"></div></div><span class="mdl-stat-label">asistencia promedio</span></div><div class="mdl-stat-events"><span class="mdl-ev-chip mdl-ev-a">Alc. <strong>${escapeHtml(String(entry.totalReach || 0))}/${escapeHtml(String(entry.totalVisits || 0))}</strong> (${escapeHtml(String(entry.reachPct || 0))}%)</span><span class="mdl-ev-chip mdl-ev-c">Culto <strong>${escapeHtml(String(entry.totalSunday || 0))}/${escapeHtml(String(entry.totalVisits || 0))}</strong> (${escapeHtml(String(entry.sundayPct || 0))}%)</span></div>`;
+
+  return `
+    <dialog id="seguimiento-attendance-detail-dialog" class="member-modal">
+      <div class="member-modal-inner">
+        <div class="member-modal-head">
+          <div>
+            <p class="eyebrow">${escapeHtml(entry.periodLabel || '')}</p>
+            <h2 id="seguimiento-attendance-detail-title">${escapeHtml(entry.name || '')}</h2>
+          </div>
+          <button id="seguimiento-attendance-detail-close-btn" type="button" class="member-modal-close" aria-label="Cerrar">✕</button>
+        </div>
+        <div class="member-modal-stats">${statsMarkup}</div>
+        <div class="member-modal-body">${bodyMarkup}</div>
+      </div>
+    </dialog>
+  `;
+}
+
 function getQuarterName(quarter) {
   return `Q${quarter}`;
 }
@@ -702,6 +811,7 @@ function renderDashboardPanel(state) {
   const alerts = data?.alerts || { current: [], previous: [], emptyMessage: 'Sin alertas.' };
   const selectedMeta = data?.selectedMeta || {};
   const activeAttendTab = String(state?.dashboardAttendanceTab || 'hermanos') === 'amigos' ? 'amigos' : 'hermanos';
+  const attendanceDetailEntry = state.attendanceDetailEntry || null;
   const normalizeVisitorName = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const stageReached = (formData, stageName) => {
     const order = ['encabezado', 'planificacion', 'alcance', 'culto', 'cierre'];
@@ -740,6 +850,7 @@ function renderDashboardPanel(state) {
         if (!key) return;
         const prev = memberStats.get(key) || {
           key,
+          detailKey: key,
           name: String(entry?.name || '').trim(),
           planPresent: 0,
           reachPresent: 0,
@@ -753,17 +864,21 @@ function renderDashboardPanel(state) {
         if (planApplied) {
           prev.planApplied += 1;
           if (entry?.planningAttended) prev.planPresent += 1;
+          else if (String(entry?.planningStatus || '').toLowerCase() === 'justified') prev.justified += 1;
+          else prev.absent += 1;
         }
         if (reachApplied) {
           prev.reachApplied += 1;
           if (entry?.reachAttended) prev.reachPresent += 1;
+          else if (String(entry?.reachStatus || '').toLowerCase() === 'justified') prev.justified += 1;
+          else prev.absent += 1;
         }
         if (sundayApplied) {
           prev.sundayApplied += 1;
           if (entry?.sundayAttended) prev.sundayPresent += 1;
+          else if (String(entry?.sundayStatus || '').toLowerCase() === 'justified') prev.justified += 1;
+          else prev.absent += 1;
         }
-        if (String(entry?.status || '').toLowerCase() === 'absent') prev.absent += 1;
-        if (String(entry?.status || '').toLowerCase() === 'justified') prev.justified += 1;
         memberStats.set(key, prev);
       });
 
@@ -772,6 +887,7 @@ function renderDashboardPanel(state) {
         const norm = normalizeVisitorName(visitor?.name || '');
         if (!norm) return;
         const prev = visitorStats.get(norm) || {
+          detailKey: norm,
           name: String(visitor?.name || '').trim(),
           visits: 0,
           reachCount: 0,
@@ -807,7 +923,8 @@ function renderDashboardPanel(state) {
     const gap = (circumference - (pct * circumference)).toFixed(2);
     const pctText = hasTotal ? `${Math.round(pct * 100)}%` : '';
     const subText = hasTotal ? `${Number(value || 0)}/${Number(total || 0)}` : `${Number(value || 0)}`;
-    return `<div class="trend-cell trend-cell-donut"><svg class="trend-donut trend-donut-${escapeHtml(cls)}" viewBox="0 0 36 36" aria-hidden="true"><circle class="trend-donut-track" cx="18" cy="18" r="${radius}" fill="none" stroke-width="4"></circle><circle class="trend-donut-fill" cx="18" cy="18" r="${radius}" fill="none" stroke-width="4" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 18 18)"></circle><text class="trend-donut-text" x="18" y="18" text-anchor="middle" dominant-baseline="central">${escapeHtml(hasTotal ? pctText : String(Number(value || 0)))}</text></svg><span class="trend-donut-sub">${escapeHtml(subText)}</span></div>`;
+    const titleText = hasTotal ? `${Number(value || 0)} de ${Number(total || 0)} (${pctText})` : `${Number(value || 0)}`;
+    return `<div class="trend-cell trend-cell-donut" title="${escapeHtml(titleText)}"><svg class="trend-donut trend-donut-${escapeHtml(cls)}" viewBox="0 0 36 36" aria-hidden="true"><circle class="trend-donut-track" cx="18" cy="18" r="${radius}" fill="none" stroke-width="4"></circle><circle class="trend-donut-fill" cx="18" cy="18" r="${radius}" fill="none" stroke-width="4" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 18 18)"></circle><text class="trend-donut-text" x="18" y="18" text-anchor="middle" dominant-baseline="central">${escapeHtml(hasTotal ? pctText : String(Number(value || 0)))}</text></svg><span class="trend-donut-sub">${escapeHtml(subText)}</span></div>`;
   };
   const quarterTrendRows = timeScope === 'quarter'
     ? [...filteredReports].sort((left, right) => {
@@ -997,7 +1114,7 @@ function renderDashboardPanel(state) {
                           && row.planApplied === row.reachApplied && row.reachApplied === row.sundayApplied
                           ? `${row.planPresent} de ${row.planApplied} semanas asistió a los 3 eventos`
                           : `Plan. ${row.planPresent}/${row.planApplied} · Alc. ${row.reachPresent}/${row.reachApplied} · Culto ${row.sundayPresent}/${row.sundayApplied}`;
-                        return `<tr class="attend-row${absTotal === 0 ? '' : avgPct < 50 ? ' attend-row-low' : ' attend-row-mid'}">
+                        return `<tr class="attend-row${absTotal === 0 ? '' : avgPct < 50 ? ' attend-row-low' : ' attend-row-mid'} attend-row-clickable" data-member-key="${escapeHtml(String(row.key || row.name || ''))}" data-member-name="${escapeHtml(String(row.name || ''))}" title="Ver detalle de ${escapeHtml(String(row.name || ''))}">
                           <td class="attend-name">${escapeHtml(String(row.name || ''))}<div class="attend-ev-detail">${escapeHtml(detail)}</div></td>
                           <td class="attend-falta-cell">${absTotal === 0
                             ? '<span class="attend-ok-badge">✓ Sin faltas registradas.</span>'
@@ -1023,7 +1140,7 @@ function renderDashboardPanel(state) {
                         const covered = Number(row.reachCount || 0) + Number(row.sundayCount || 0);
                         const avgPct = totalEvents > 0 ? Math.round((covered / totalEvents) * 100) : 0;
                         const barCls = avgPct >= 80 ? 'attend-bar-good' : avgPct >= 50 ? 'attend-bar-mid' : 'attend-bar-low';
-                        return `<tr class="attend-row">
+                        return `<tr class="attend-row attend-row-clickable" data-visitor-key="${escapeHtml(normalizeVisitorName(row.name || ''))}" data-visitor-name="${escapeHtml(String(row.name || ''))}" title="Ver detalle de ${escapeHtml(String(row.name || ''))}">
                           <td class="attend-name"><span class="visitor-kind-chip is-${row.kind === 'visita' ? 'visita' : 'amigo'}">${row.kind === 'visita' ? 'Visita' : 'Amigo'}</span> ${escapeHtml(String(row.name || ''))}</td>
                           <td class="attend-falta-cell"><span class="attend-ev-chip attend-ev-a">${escapeHtml(String(row.reachCount || 0))}/${escapeHtml(String(row.visits || 0))}</span> <span class="attend-ev-chip attend-ev-c">${escapeHtml(String(row.sundayCount || 0))}/${escapeHtml(String(row.visits || 0))}</span></td>
                           <td class="attend-bar-cell"><div class="attend-bar-track"><div class="attend-bar-fill ${barCls}" style="width:${avgPct}%"></div></div><span class="attend-pct">${escapeHtml(String(row.visits || 0))} vis.</span></td>
@@ -1047,7 +1164,18 @@ function renderDashboardPanel(state) {
         <div id="dashboard-metrics-body">
           ${timeScope === 'quarter'
             ? `${quarterTrendRows.length
-              ? `<div class="trend-table-wrap"><table class="trend-table"><thead><tr><th class="trend-th-week">Sem.</th><th class="trend-th-ev trend-th-section">Hermanos</th><th class="trend-th-ev"></th><th class="trend-th-ev"></th><th class="trend-th-ev trend-th-section trend-th-friends">Amigos</th><th class="trend-th-ev trend-th-friends"></th><th class="trend-th-ev trend-th-friends"></th></tr><tr class="trend-subhead"><th></th><th>Plan.</th><th>Alcance</th><th>Culto hermanos</th><th>Asistieron</th><th>Retención culto</th><th>Conv.</th></tr></thead><tbody>${quarterTrendRows.map((row) => `<tr class="trend-row"><td class="trend-week-cell"><strong>${escapeHtml(String(row.week || ''))}</strong><span class="trend-date">${escapeHtml(row.dateLabel || '')}</span></td><td>${trendMiniDonut(row.planningPresent, row.totalMembers, 'plan')}</td><td>${trendMiniDonut(row.reachPresent, row.totalMembers, 'reach')}</td><td>${trendMiniDonut(row.sundayPresent, row.totalMembers, 'sunday')}</td><td>${trendMiniDonut(row.friendsReach, 0, 'friends')}</td><td>${trendMiniDonut(row.friendsSunday, row.friendsReach, 'friends')}</td><td>${trendMiniDonut(row.conversions, 0, 'friends')}</td></tr>`).join('')}</tbody><tfoot><tr class="trend-avg-row"><td class="trend-avg-label">Total visitas</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.planningPresent))}</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.reachPresent))}</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.sundayPresent))}</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.friendsReach))}</td><td class="trend-avg-val">${escapeHtml(quarterTrendTotals.friendsReach > 0 ? `${Math.round((quarterTrendTotals.friendsSunday / quarterTrendTotals.friendsReach) * 100)}%` : '–')}</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.conversions))}</td></tr><tr class="trend-avg-row trend-uniq-row"><td class="trend-avg-label">Personas únicas</td><td class="trend-avg-val" colspan="3" style="text-align:right; color:var(--muted); font-weight:600;">amigos →</td><td class="trend-avg-val">${escapeHtml(String(uniqFriendsReach))}</td><td class="trend-avg-val">${escapeHtml(uniqFriendsReach > 0 ? `${Math.round((uniqFriendsSunday / uniqFriendsReach) * 100)}%` : '–')}</td><td class="trend-avg-val">${escapeHtml(String(uniqFriendsSunday))}<small style="display:block; font-size:0.6rem; color:var(--muted); font-weight:500;">al culto</small></td></tr></tfoot></table></div>`
+              ? `<div class="trend-table-wrap"><table class="trend-table"><thead><tr><th class="trend-th-week">Sem.</th><th class="trend-th-ev trend-th-section">Hermanos</th><th class="trend-th-ev"></th><th class="trend-th-ev"></th><th class="trend-th-ev trend-th-section trend-th-friends">Amigos</th><th class="trend-th-ev trend-th-friends"></th><th class="trend-th-ev trend-th-friends"></th></tr><tr class="trend-subhead"><th></th><th>Plan.</th><th>Alcance</th><th>Culto hermanos</th><th title="Amigos que asistieron al alcance">Asistieron</th><th title="Amigos que pasaron del alcance al culto">Retención culto</th><th title="Decisiones de fe registradas">Conv.</th></tr></thead><tbody>${quarterTrendRows.map((row) => {
+                  const sundaySet = new Set((Array.isArray(row.friendsSundayNames) ? row.friendsSundayNames : []).map((name) => String(name || '').trim().toLowerCase()));
+                  const missedNames = (Array.isArray(row.friendsReachNames) ? row.friendsReachNames : []).filter((name) => !sundaySet.has(String(name || '').trim().toLowerCase()));
+                  const reachPop = Array.isArray(row.friendsReachNames) && row.friendsReachNames.length
+                    ? `<span class="trend-pop"><span class="trend-pop-title">Amigos al alcance (${escapeHtml(String(row.friendsReachNames.length))})</span>${row.friendsReachNames.map((name) => `<span class="trend-pop-name${sundaySet.has(String(name || '').trim().toLowerCase()) ? ' is-sunday' : ''}">${escapeHtml(String(name || ''))}</span>`).join('')}</span>`
+                    : '';
+                  const retentionPct = Number(row.friendsReach || 0) > 0 ? Math.round((Number(row.friendsSunday || 0) / Number(row.friendsReach || 1)) * 100) : 0;
+                  const sundayPop = Array.isArray(row.friendsReachNames) && row.friendsReachNames.length
+                    ? `<span class="trend-pop trend-pop-wide"><span class="trend-pop-title">Retención al culto · ${escapeHtml(String(row.friendsSunday || 0))}/${escapeHtml(String(row.friendsReach || 0))} (${escapeHtml(String(retentionPct))}%)</span>${row.friendsSundayNames.length ? `<span class="trend-pop-section trend-pop-section-ok">Llegaron (${escapeHtml(String(row.friendsSundayNames.length))})</span>${row.friendsSundayNames.map((name) => `<span class="trend-pop-name is-sunday">${escapeHtml(String(name || ''))}</span>`).join('')}` : ''}${missedNames.length ? `<span class="trend-pop-section trend-pop-section-miss">No llegaron (${escapeHtml(String(missedNames.length))})</span>${missedNames.map((name) => `<span class="trend-pop-name is-missed">${escapeHtml(String(name || ''))}</span>`).join('')}` : ''}</span>`
+                    : '';
+                  return `<tr class="trend-row"><td class="trend-week-cell"><strong>${escapeHtml(String(row.week || ''))}</strong><span class="trend-date">${escapeHtml(row.dateLabel || '')}</span></td><td>${trendMiniDonut(row.planningPresent, row.totalMembers, 'plan')}</td><td>${trendMiniDonut(row.reachPresent, row.totalMembers, 'reach')}</td><td>${trendMiniDonut(row.sundayPresent, row.totalMembers, 'sunday')}</td><td class="trend-td-hover">${trendMiniDonut(row.friendsReach, 0, 'friends')}${reachPop}</td><td class="trend-td-hover">${trendMiniDonut(row.friendsSunday, row.friendsReach, 'friends')}${sundayPop}</td><td>${trendMiniDonut(row.conversions, 0, 'friends')}</td></tr>`;
+                }).join('')}</tbody><tfoot><tr class="trend-avg-row"><td class="trend-avg-label">Total visitas</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.planningPresent))}</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.reachPresent))}</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.sundayPresent))}</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.friendsReach))}</td><td class="trend-avg-val">${escapeHtml(quarterTrendTotals.friendsReach > 0 ? `${Math.round((quarterTrendTotals.friendsSunday / quarterTrendTotals.friendsReach) * 100)}%` : '–')}</td><td class="trend-avg-val">${escapeHtml(String(quarterTrendTotals.conversions))}</td></tr><tr class="trend-avg-row trend-uniq-row"><td class="trend-avg-label">Personas únicas</td><td class="trend-avg-val" colspan="3" style="text-align:right; color:var(--muted); font-weight:600;">amigos →</td><td class="trend-avg-val" title="Amigos distintos que asistieron al alcance en el período">${escapeHtml(String(uniqFriendsReach))}</td><td class="trend-avg-val" title="Retención del culto contando solo personas únicas">${escapeHtml(uniqFriendsReach > 0 ? `${Math.round((uniqFriendsSunday / uniqFriendsReach) * 100)}%` : '–')}</td><td class="trend-avg-val">${escapeHtml(String(uniqFriendsSunday))}<small style="display:block; font-size:0.6rem; color:var(--muted); font-weight:500;">al culto</small></td></tr></tfoot></table></div>`
               : '<div class="quick-list-empty">Sin métricas para el período seleccionado.</div>'}`
             : `<div class="summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));">
                 ${metricsBlocks.map((block) => `
@@ -1113,6 +1241,7 @@ function renderDashboardPanel(state) {
             : '<div class="quick-list-empty">Sin bautismos registrados.</div>'}
         </div>
       </section>
+      ${attendanceDetailEntry ? renderAttendanceDetailDialog(attendanceDetailEntry) : ''}
     </div>
   `;
 }

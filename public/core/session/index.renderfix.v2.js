@@ -4,7 +4,7 @@ import { applyRcmWeeksConfig, resetRcmWeeks } from '../rcm/index.js';
 import { fetchReports } from '../../features/reporte/data/reporte.repository.js';
 import { getQuarterWeekNumber } from '../../features/reporte/models/reporte-state.js';
 
-const FEATURE_MODULE_VERSION = 'v=20260619-settings-layout-3';
+const FEATURE_MODULE_VERSION = 'v=20260622-seguimiento-attendance-detail-5';
 
 const appState = {
   rootSelector: '#app-root',
