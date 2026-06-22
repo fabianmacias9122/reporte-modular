@@ -103,11 +103,73 @@ function getReportRcmSnapshot(report) {
       verb: String(snapshot.verb || '').trim(),
       event: String(snapshot.event || '').trim(),
       rcmKey: String(snapshot.rcmKey || '').trim(),
+      specialEvents: Array.isArray(snapshot.specialEvents) ? snapshot.specialEvents : [],
       isEventWeek: Boolean(snapshot.isEventWeek || snapshot.event),
     };
   }
   const weekNumber = parseInt(String(report?.week || report?.formData?.week || '0'), 10) || 0;
   return getDefaultRcmWeekInfo(weekNumber);
+}
+
+function getReportEventKeys(reportSnapshot) {
+  const keys = new Set();
+  const specialEvents = Array.isArray(reportSnapshot?.specialEvents) ? reportSnapshot.specialEvents : [];
+  specialEvents.forEach((entry) => {
+    const eventKey = String(entry?.rcmKey || '').trim();
+    if (eventKey) keys.add(eventKey);
+  });
+  const primaryKey = String(reportSnapshot?.rcmKey || '').trim();
+  if (primaryKey) keys.add(primaryKey);
+  return keys;
+}
+
+function getVisitorAttendedEventKeys(visitor, reportSnapshot) {
+  const eventProgress = visitor?.eventProgress && typeof visitor.eventProgress === 'object'
+    ? visitor.eventProgress
+    : {};
+  const attendedKeys = Object.entries(eventProgress).reduce((result, [key, value]) => {
+    const normalizedKey = String(key || '').trim();
+    if (normalizedKey && value) {
+      result.add(normalizedKey);
+    }
+    return result;
+  }, new Set());
+  if (attendedKeys.size) {
+    return attendedKeys;
+  }
+  return visitor?.eventAttended ? getReportEventKeys(reportSnapshot) : new Set();
+}
+
+function getEventLabelByKey(reportSnapshot, eventKey) {
+  const specialEvents = Array.isArray(reportSnapshot?.specialEvents) ? reportSnapshot.specialEvents : [];
+  const matchedEvent = specialEvents.find((entry) => String(entry?.rcmKey || '').trim() === String(eventKey || '').trim());
+  if (matchedEvent?.event) return String(matchedEvent.event).trim();
+  if (String(reportSnapshot?.rcmKey || '').trim() === String(eventKey || '').trim() && reportSnapshot?.event) {
+    return String(reportSnapshot.event).trim();
+  }
+  return String(eventKey || '').trim();
+}
+
+function buildHistoryStep(visitor, report, reportSnapshot, processEntry) {
+  const reportDate = String(report?.reportDate || report?.formData?.reportDate || '').trim();
+  const weekNumber = parseInt(String(report?.week || report?.formData?.week || '0'), 10) || 0;
+  const attendedEventKeys = getVisitorAttendedEventKeys(visitor, reportSnapshot);
+  const attendedEvents = [...attendedEventKeys].map((eventKey) => ({
+    key: eventKey,
+    label: getEventLabelByKey(reportSnapshot, eventKey),
+  }));
+  return {
+    key: `${String(report?.id || report?._id || reportDate || '')}::${weekNumber}::${String(visitor?.name || '').trim()}`,
+    weekNumber,
+    reportDate,
+    phase: String(reportSnapshot?.phaseLabel || reportSnapshot?.phase || '').trim(),
+    verb: String(reportSnapshot?.verb || '').trim(),
+    processEntry,
+    reachAttended: Boolean(visitor?.reachAttended),
+    sundayAttended: Boolean(visitor?.sundayAttended),
+    converted: Boolean(visitor?.converted),
+    attendedEvents,
+  };
 }
 
 function buildProcessControlEntries(scopedReports = [], friends = []) {
@@ -135,6 +197,7 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
         restauracion: false, restauracionWeek: 0, restauracionDate: '',
         currentWeek: 0, firstReportDate: '', lastReportDate: '',
         totalReports: 0, reachCount: 0, sundayCount: 0,
+        historySteps: [],
       };
 
       const processEntry = normalizeVisitorProcessEntry(visitor.processEntry, visitor.kind, {
@@ -154,14 +217,15 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
       previous.totalReports += 1;
       if (visitor.reachAttended) previous.reachCount += 1;
       if (visitor.sundayAttended) previous.sundayCount += 1;
-      if (reportSnapshot?.rcmKey === 'levantate' && visitor.eventAttended) {
+      const attendedEventKeys = getVisitorAttendedEventKeys(visitor, reportSnapshot);
+      if (attendedEventKeys.has('levantate')) {
         previous.levantate = true;
         if (!previous.levantateWeek || (weekNumber && weekNumber < previous.levantateWeek)) {
           previous.levantateWeek = weekNumber;
           previous.levantateDate = reportDate;
         }
       }
-      if (reportSnapshot?.rcmKey === 'restauracion' && visitor.eventAttended) {
+      if (attendedEventKeys.has('restauracion')) {
         previous.restauracion = true;
         if (!previous.restauracionWeek || (weekNumber && weekNumber < previous.restauracionWeek)) {
           previous.restauracionWeek = weekNumber;
@@ -170,6 +234,10 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
       }
       if (!previous.firstReportDate || (reportDate && reportDate < previous.firstReportDate)) previous.firstReportDate = reportDate;
       if (!previous.lastReportDate || (reportDate && reportDate >= previous.lastReportDate)) previous.lastReportDate = reportDate;
+      const historyStep = buildHistoryStep(visitor, report, reportSnapshot, processEntry);
+      if (!previous.historySteps.some((step) => step.key === historyStep.key)) {
+        previous.historySteps.push(historyStep);
+      }
       processMap.set(key, previous);
     });
   });
@@ -222,11 +290,19 @@ function buildProcessControlEntries(scopedReports = [], friends = []) {
           ? `Cerró ciclo, pero le faltó: ${pendingSteps.filter((step) => step !== 'Cierre semana 16').join(', ') || 'revisión manual'}`
           : `Avance detectado; falta: ${pendingSteps.join(', ')}`;
       }
+      const historySteps = Array.isArray(entry.historySteps)
+        ? [...entry.historySteps].sort((left, right) => {
+          const dateDiff = String(left.reportDate || '').localeCompare(String(right.reportDate || ''));
+          if (dateDiff !== 0) return dateDiff;
+          return Number(left.weekNumber || 0) - Number(right.weekNumber || 0);
+        })
+        : [];
       return {
         ...entry,
         processCount: Number(backendFriend?.processCount || 0),
         backendOutcome: String(backendFriend?.outcome || ''),
         backendStatus: String(backendFriend?.status || ''),
+        historySteps,
         cycleClosed,
         outsideCohort,
         complete,
@@ -257,7 +333,7 @@ import {
   selectSeguimientoCards,
   selectSeguimientoSummary,
 } from './models/seguimiento-state.js';
-import { renderSeguimientoShell } from './views/seguimiento-shell.js';
+import { renderSeguimientoShell } from './views/seguimiento-shell.js?v=20260622-metas-history-1';
 
 const SEGUIMIENTO_SHOW_OFFERING_STORAGE_KEY = 'segTotals.showOffering';
 
@@ -1360,6 +1436,36 @@ function buildSupervisorWhatsAppText(state) {
   lines.push(`• Niños: ${totals.sundayKids || 0}`);
   return lines.join('\n');
 }
+function getReportTextSpecialEvents(report) {
+  const formData = report?.formData || {};
+  const reportSnapshot = getReportRcmSnapshot(report);
+  const rawSpecialEvents = Array.isArray(reportSnapshot?.specialEvents) && reportSnapshot.specialEvents.length
+    ? reportSnapshot.specialEvents
+    : [];
+  const specialEvents = rawSpecialEvents
+    .map((entry) => ({
+      event: String(entry?.event || '').trim(),
+      rcmKey: String(entry?.rcmKey || '').trim(),
+      captureMode: String(entry?.captureMode || '').trim() || 'separate',
+    }))
+    .filter((entry) => entry.event);
+  if (!specialEvents.length && String(reportSnapshot?.event || '').trim()) {
+    specialEvents.push({
+      event: String(reportSnapshot.event || '').trim(),
+      rcmKey: String(reportSnapshot.rcmKey || '').trim(),
+      captureMode: 'separate',
+    });
+  }
+  const members = Array.isArray(formData?.memberAttendance) ? formData.memberAttendance : [];
+  const visitors = normalizeVisitors(formData?.visitors);
+  return specialEvents.map((event) => {
+    const memberCount = members.filter((entry) => Boolean(event.rcmKey && entry?.rcmProgress?.[event.rcmKey])).length;
+    const attendeeVisitors = visitors.filter((visitor) => getVisitorAttendedEventKeys(visitor, reportSnapshot).has(event.rcmKey));
+    const friendCount = attendeeVisitors.filter((entry) => normalizeVisitorKind(entry.kind) !== 'visita').length;
+    const restorationCount = attendeeVisitors.filter((entry) => normalizeVisitorKind(entry.kind) === 'visita').length;
+    return { ...event, memberCount, friendCount, restorationCount };
+  });
+}
 
 function buildReportWhatsAppText(report) {
   const formData = report?.formData || {};
@@ -1367,6 +1473,10 @@ function buildReportWhatsAppText(report) {
   const week = String(formData?.week || report?.week || '—');
   const leader = String(formData?.leaderName || report?.leaderName || '').trim();
   const totals = aggregateMetrics([report]);
+  const specialEventSummaries = getReportTextSpecialEvents(report);
+  const reachEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'reach');
+  const sundayEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'sunday');
+  const separateEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'separate');
   const lines = [];
   lines.push(`📋 *Reporte célula ${cell} · Semana ${week}*`);
   if (leader) lines.push(`Líder: ${leader}`);
@@ -1383,12 +1493,25 @@ function buildReportWhatsAppText(report) {
   lines.push(`• En restauración: ${totals.reachRestor || 0}`);
   lines.push(`• Niños: ${totals.reachKids || 0}`);
   lines.push(`• Ofrenda: $${Number(totals.offering || 0).toFixed(2)}`);
+  reachEventSummaries.forEach((entry) => {
+    lines.push(`• Evento en alcance · ${entry.event}: ${entry.memberCount} hmnos, ${entry.friendCount} amigos${entry.restorationCount ? `, ${entry.restorationCount} restauración` : ''}`);
+  });
   lines.push('');
   lines.push('*CULTO INSPIRADOR*');
   lines.push(`• Miembros: ${totals.sundayMembers || 0}`);
   lines.push(`• Amigos: ${totals.sundayFriends || 0}`);
   lines.push(`• En restauración: ${totals.sundayRestor || 0}`);
   lines.push(`• Niños: ${totals.sundayKids || 0}`);
+  sundayEventSummaries.forEach((entry) => {
+    lines.push(`• Evento en culto · ${entry.event}: ${entry.memberCount} hmnos, ${entry.friendCount} amigos${entry.restorationCount ? `, ${entry.restorationCount} restauración` : ''}`);
+  });
+  if (separateEventSummaries.length) {
+    lines.push('');
+    lines.push('*EVENTOS APARTE*');
+    separateEventSummaries.forEach((entry) => {
+      lines.push(`• ${entry.event}: ${entry.memberCount} hmnos, ${entry.friendCount} amigos${entry.restorationCount ? `, ${entry.restorationCount} restauración` : ''}`);
+    });
+  }
   return lines.join('\n');
 }
 

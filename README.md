@@ -1,4 +1,4 @@
-# frontend-next
+# reporte-modular
 
 Frontend paralelo para migrar el monolito de `public/app.js` sin afectar el sistema actual.
 

@@ -1,17 +1,99 @@
-import { getRcmTotalWeeks, getRcmWeekInfo } from '../../../core/rcm/index.js';
+import { getPrimaryRcmSpecialEvent, getRcmTotalWeeks, getRcmWeekInfo, normalizeRcmCaptureMode, normalizeRcmSpecialEvents } from '../../../core/rcm/index.js';
 import { createEmptyCatalogs, findCellByNumber, getCellKids, getCellMembers } from '../../catalogos/models/catalogs-state.js';
+
+function getPreferredSnapshotEvent(snapshot) {
+  const specialEvents = normalizeRcmSpecialEvents(snapshot?.specialEvents, snapshot);
+  return specialEvents.find((entry) => entry?.captureMode === 'separate')
+    || specialEvents.find((entry) => entry?.captureMode === 'reach')
+    || specialEvents.find((entry) => entry?.captureMode === 'sunday')
+    || getPrimaryRcmSpecialEvent({ ...snapshot, specialEvents })
+    || null;
+}
+
+function normalizeVisitorEventProgress(value, fallbackEventAttended = false, fallbackKey = '') {
+  const source = value && typeof value === 'object' ? value : {};
+  const normalized = Object.entries(source).reduce((result, [key, attended]) => {
+    const nextKey = String(key || '').trim();
+    if (!nextKey) return result;
+    result[nextKey] = Boolean(attended);
+    return result;
+  }, {});
+  const preferredKey = String(fallbackKey || '').trim();
+  if (fallbackEventAttended && preferredKey && !(preferredKey in normalized)) {
+    normalized[preferredKey] = true;
+  }
+  return normalized;
+}
+
+function getRcmCaptureMode(snapshot) {
+  const primaryEvent = getPreferredSnapshotEvent(snapshot);
+  return normalizeRcmCaptureMode(snapshot?.captureMode ?? primaryEvent?.captureMode, Boolean(primaryEvent?.event || snapshot?.event));
+}
+
+function getRcmPrimaryEvent(snapshot) {
+  return getPreferredSnapshotEvent(snapshot);
+}
+
+function buildVisitorsWithCaptureMode(visitors = [], snapshot = null) {
+  const normalizedVisitors = normalizeVisitors(visitors);
+  const captureMode = getRcmCaptureMode(snapshot);
+  if (captureMode !== 'reach' && captureMode !== 'sunday') {
+    return normalizedVisitors;
+  }
+  const sourceField = captureMode === 'reach' ? 'reachAttended' : 'sundayAttended';
+  const preferredEvent = getPreferredSnapshotEvent(snapshot);
+  const preferredKey = String(preferredEvent?.rcmKey || snapshot?.rcmKey || '').trim();
+  return normalizedVisitors.map((visitor) => ({
+    ...visitor,
+    eventAttended: Boolean(visitor?.[sourceField]),
+    eventProgress: normalizeVisitorEventProgress(
+      visitor?.eventProgress,
+      Boolean(visitor?.[sourceField]),
+      preferredKey,
+    ),
+  }));
+}
+
+function buildMemberAttendanceWithCaptureMode(entries = [], snapshot = null, reportDate = '') {
+  const normalizedEntries = Array.isArray(entries) ? entries : [];
+  const captureMode = getRcmCaptureMode(snapshot);
+  const rcmKey = String(snapshot?.rcmKey || '').trim();
+  if (!rcmKey || (captureMode !== 'reach' && captureMode !== 'sunday')) {
+    return normalizedEntries;
+  }
+  const sourceField = captureMode === 'reach' ? 'reachAttended' : 'sundayAttended';
+  const attendanceValue = String(reportDate || '').trim() || 'asistio';
+  return normalizedEntries.map((entry) => {
+    const nextProgress = { ...(entry?.rcmProgress || {}) };
+    if (entry?.[sourceField]) {
+      nextProgress[rcmKey] = attendanceValue;
+    } else {
+      delete nextProgress[rcmKey];
+    }
+    return {
+      ...entry,
+      rcmProgress: nextProgress,
+    };
+  });
+}
 
 function buildReportRcmSnapshot(weekValue) {
   const info = getRcmWeekInfo(weekValue);
   const weekNumber = parseInt(String(weekValue || '0'), 10) || 0;
+  const specialEvents = normalizeRcmSpecialEvents(info?.specialEvents, info);
+  const primaryEvent = getRcmPrimaryEvent({ ...info, specialEvents });
   return {
     week: weekNumber,
     phase: String(info?.phase || '').trim(),
     phaseLabel: String(info?.phaseLabel || '').trim(),
     verb: String(info?.verb || '').trim(),
-    event: String(info?.event || '').trim(),
-    rcmKey: String(info?.rcmKey || '').trim(),
-    isEventWeek: Boolean(info?.isEventWeek && info?.event),
+    specialEvents,
+    event: String(primaryEvent?.event || '').trim(),
+    eventType: String(primaryEvent?.eventType || '').trim(),
+    purpose: String(primaryEvent?.purpose || '').trim(),
+    rcmKey: String(primaryEvent?.rcmKey || '').trim(),
+    captureMode: getRcmCaptureMode({ ...info, specialEvents }),
+    isEventWeek: specialEvents.length > 0,
   };
 }
 
@@ -187,6 +269,8 @@ function buildVisitorEntry(visitor = {}) {
   const processEntry = normalizeVisitorProcessEntry(visitor?.processEntry, kind, {
     lateRegistration: Boolean(visitor?.lateRegistration),
   });
+  const fallbackEventKey = String(visitor?.eventKey || visitor?.rcmKey || '').trim();
+  const eventProgress = normalizeVisitorEventProgress(visitor?.eventProgress, Boolean(visitor?.eventAttended), fallbackEventKey);
   return {
     name: String(visitor?.name || ''),
     kind,
@@ -199,7 +283,8 @@ function buildVisitorEntry(visitor = {}) {
     converted: kind === 'visita' ? false : Boolean(visitor?.converted),
     promoteToMember: kind === 'visita' ? Boolean(visitor?.promoteToMember) : false,
     contacted: Boolean(visitor?.contacted),
-    eventAttended: Boolean(visitor?.eventAttended),
+    eventAttended: Boolean(visitor?.eventAttended) || Object.values(eventProgress).some(Boolean),
+    eventProgress,
     phone: String(visitor?.phone || ''),
     note: String(visitor?.note || ''),
   };
@@ -1228,7 +1313,8 @@ export function getSundaySummary(memberEntries, visitors, kids) {
 
 export function getWeeklySummary(form) {
   const members = Array.isArray(form?.memberAttendance) ? form.memberAttendance : [];
-  const namedVisitors = normalizeVisitors(form?.visitors).filter((visitor) => String(visitor.name || '').trim());
+  const rcmSnapshot = form?.rcmSnapshot || buildReportRcmSnapshot(form?.week);
+  const namedVisitors = buildVisitorsWithCaptureMode(form?.visitors, rcmSnapshot).filter((visitor) => String(visitor.name || '').trim());
   const namedKids = normalizeKids(form?.kids).filter((kid) => String(kid.name || '').trim());
   const baptisms = normalizeBaptisms(form?.baptisms).filter((entry) => entry.name);
   const reachExternalParticipants = getReachExternalParticipants(form?.externalParticipants, null, form?.cellNumber);
@@ -1436,6 +1522,7 @@ export function createVisitorQuickForm() {
     reachAttended: true,
     sundayAttended: false,
     eventAttended: false,
+    eventProgress: {},
     firstVisit: false,
     processEntry: 'none',
     converted: false,
@@ -1471,6 +1558,7 @@ export function addVisitor(visitors, visitorForm) {
       ...visitorForm,
       name: normalizedName,
       invitedBy: String(visitorForm.invitedBy || '').trim(),
+      eventProgress: visitorForm.eventProgress || {},
       phone: String(visitorForm.phone || '').trim(),
       note: String(visitorForm.note || '').trim(),
     }),
@@ -1483,6 +1571,7 @@ export function updateVisitor(visitors, index, patch) {
     return buildVisitorEntry({
       ...visitor,
       ...patch,
+      eventProgress: patch.eventProgress !== undefined ? patch.eventProgress : visitor.eventProgress,
       name: patch.name !== undefined ? String(patch.name || '').trim() : visitor.name,
       invitedBy: patch.invitedBy !== undefined ? String(patch.invitedBy || '').trim() : visitor.invitedBy,
       phone: patch.phone !== undefined ? String(patch.phone || '').trim() : visitor.phone,
@@ -1498,13 +1587,18 @@ export function removeVisitor(visitors, index) {
 export function buildReportPayload(form, options = {}) {
   const externalParticipants = normalizeExternalParticipants(form.externalParticipants);
   const reachSupervisorVisits = getLegacyReachSupervisorVisits(externalParticipants, null, form.cellNumber);
+  const rcmSnapshot = buildReportRcmSnapshot(form.week);
+  const memberAttendance = buildMemberAttendanceWithCaptureMode(form.memberAttendance, rcmSnapshot, form.reportDate);
+  const visitors = buildVisitorsWithCaptureMode(form.visitors, rcmSnapshot);
   const attendanceSummary = getWeeklySummary({
     ...form,
+    memberAttendance,
+    visitors,
     externalParticipants,
+    rcmSnapshot,
   });
   const isDraft = options.isDraft !== undefined ? Boolean(options.isDraft) : true;
   const lastStage = String(options.lastStage || '').trim() || 'encabezado';
-  const rcmSnapshot = buildReportRcmSnapshot(form.week);
   return {
     ...createReportFormData(),
     ...form,
@@ -1526,8 +1620,8 @@ export function buildReportPayload(form, options = {}) {
     supervisionZone: String(form.supervisionZone || '0').trim() || '0',
     supervisionRegion: String(form.supervisionRegion || '0').trim() || '0',
     supervisionArea: String(form.supervisionArea || '0').trim() || '0',
-    memberAttendance: Array.isArray(form.memberAttendance) ? form.memberAttendance : [],
-    visitors: Array.isArray(form.visitors) ? form.visitors : [],
+    memberAttendance,
+    visitors,
     kids: Array.isArray(form.kids) ? form.kids : [],
     baptisms: Array.isArray(form.baptisms) ? form.baptisms : [],
     externalParticipants,

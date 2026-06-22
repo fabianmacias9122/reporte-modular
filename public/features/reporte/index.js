@@ -1,7 +1,7 @@
 import { fetchCatalogs } from '../catalogos/data/catalogos.repository.js';
 import { saveSettings } from '../configuracion/data/settings.repository.js';
 import { getRcmWeekInfo } from '../../core/rcm/index.js';
-import { attachReporteController } from './controllers/reporte.controller.js';
+import { attachReporteController } from './controllers/reporte.controller.js?v=20260619-reporte-controller-1';
 import { fetchReport, fetchReports, saveReport } from './data/reporte.repository.js';
 import {
   addKid,
@@ -60,8 +60,8 @@ import {
   updateBaptism,
   updateVisitor,
   updateKid,
-} from './models/reporte-state.js';
-import { renderReporteShell } from './views/reporte-shell.js';
+} from './models/reporte-state.js?v=20260619-reporte-state-1';
+import { renderReporteShell } from './views/reporte-shell.js?v=20260622-preview-events-fix-1';
 
 export function createReporteFeature(options = {}) {
   const state = createReporteState(normalizeReporteContext(options.initialContext));
@@ -307,8 +307,14 @@ export function createReporteFeature(options = {}) {
     const reachField = currentRoot.querySelector('input[data-visitor-field="reachAttended"]');
     const firstVisitField = currentRoot.querySelector('input[data-visitor-field="firstVisit"]');
     const convertedField = currentRoot.querySelector('input[data-visitor-field="converted"]');
-    const eventField = currentRoot.querySelector('input[data-visitor-field="eventAttended"]');
     const sundayField = currentRoot.querySelector('input[data-visitor-field="sundayAttended"]');
+    const eventProgress = Array.from(currentRoot.querySelectorAll('input[data-visitor-field="eventProgress"]')).reduce((result, field) => {
+      if (!(field instanceof HTMLInputElement)) return result;
+      const rcmKey = String(field.dataset.rcmKey || '').trim();
+      if (!rcmKey) return result;
+      result[rcmKey] = field.checked;
+      return result;
+    }, {});
     const nextForm = {
       ...currentForm,
       historySelection: historyField instanceof HTMLSelectElement ? historyField.value : currentForm.historySelection,
@@ -319,7 +325,8 @@ export function createReporteFeature(options = {}) {
       reachAttended: reachField instanceof HTMLInputElement ? reachField.checked : currentForm.reachAttended,
       firstVisit: firstVisitField instanceof HTMLInputElement ? firstVisitField.checked : currentForm.firstVisit,
       converted: convertedField instanceof HTMLInputElement ? convertedField.checked : currentForm.converted,
-      eventAttended: eventField instanceof HTMLInputElement ? eventField.checked : currentForm.eventAttended,
+      eventAttended: Object.values(eventProgress).some(Boolean),
+      eventProgress,
       sundayAttended: sundayField instanceof HTMLInputElement ? sundayField.checked : currentForm.sundayAttended,
     };
     state.visitorQuickForm = nextForm;
@@ -1775,6 +1782,15 @@ export function createReporteFeature(options = {}) {
       ...currentForm,
       [field]: value,
     };
+    if (field.startsWith('eventProgress:')) {
+      const rcmKey = String(field.split(':')[1] || '').trim();
+      const nextEventProgress = {
+        ...(currentForm.eventProgress || {}),
+        [rcmKey]: Boolean(value),
+      };
+      nextForm.eventProgress = nextEventProgress;
+      nextForm.eventAttended = Object.values(nextEventProgress).some(Boolean);
+    }
     if (field === 'name') {
       const normalizedName = String(value || '').trim();
       if (normalizeVisitorNameKey(normalizedName) !== normalizeVisitorNameKey(currentForm.historySelection || '')) {
@@ -1876,6 +1892,16 @@ export function createReporteFeature(options = {}) {
     const patch = {
       [field]: value,
     };
+    if (field.startsWith('eventProgress:')) {
+      const rcmKey = String(field.split(':')[1] || '').trim();
+      const nextEventProgress = {
+        ...(currentVisitor?.eventProgress || {}),
+        [rcmKey]: Boolean(value),
+      };
+      delete patch[field];
+      patch.eventProgress = nextEventProgress;
+      patch.eventAttended = Object.values(nextEventProgress).some(Boolean);
+    }
     if (field === 'name' && currentVisitor) {
       const history = findVisitorHistoryEntry(state.visitorHistory, value);
       if (history) {
@@ -2678,6 +2704,53 @@ export function createReporteFeature(options = {}) {
     await downloadElementAsPng(element, filename);
     window.alert('Se descargó la imagen. Abre WhatsApp y adjúntala manualmente con el clip.');
   }
+  function getReportTextSpecialEvents(formData) {
+    const weekInfo = getRcmWeekInfo(String(formData?.week || ''));
+    const snapshot = formData?.rcmSnapshot;
+    const rawSpecialEvents = Array.isArray(snapshot?.specialEvents) && snapshot.specialEvents.length
+      ? snapshot.specialEvents
+      : Array.isArray(weekInfo?.specialEvents)
+        ? weekInfo.specialEvents
+        : [];
+    const specialEvents = rawSpecialEvents
+      .map((entry) => ({
+        event: String(entry?.event || '').trim(),
+        rcmKey: String(entry?.rcmKey || '').trim(),
+        captureMode: String(entry?.captureMode || '').trim() || 'separate',
+      }))
+      .filter((entry) => entry.event);
+    if (!specialEvents.length && String(snapshot?.event || weekInfo?.event || '').trim()) {
+      specialEvents.push({
+        event: String(snapshot?.event || weekInfo?.event || '').trim(),
+        rcmKey: String(snapshot?.rcmKey || weekInfo?.rcmKey || '').trim(),
+        captureMode: String(snapshot?.captureMode || weekInfo?.captureMode || '').trim() || 'separate',
+      });
+    }
+    const fallbackKey = String(snapshot?.rcmKey || weekInfo?.rcmKey || specialEvents[0]?.rcmKey || '').trim();
+    const members = Array.isArray(formData?.memberAttendance) ? formData.memberAttendance : [];
+    const visitors = (Array.isArray(formData?.visitors) ? formData.visitors : []).filter((entry) => String(entry?.name || '').trim());
+    return specialEvents.map((event) => {
+      const memberCount = members.filter((entry) => Boolean(event.rcmKey && entry?.rcmProgress?.[event.rcmKey])).length;
+      const attendeeVisitors = visitors.filter((entry) => {
+        const eventProgress = entry?.eventProgress && typeof entry.eventProgress === 'object' ? entry.eventProgress : {};
+        const attendedKeys = Object.entries(eventProgress).reduce((result, [key, value]) => {
+          const normalizedKey = String(key || '').trim();
+          if (normalizedKey && value) {
+            result.add(normalizedKey);
+          }
+          return result;
+        }, new Set());
+        if (!attendedKeys.size && entry?.eventAttended) {
+          if (event.rcmKey) attendedKeys.add(event.rcmKey);
+          else if (fallbackKey) attendedKeys.add(fallbackKey);
+        }
+        return attendedKeys.has(event.rcmKey);
+      });
+      const friendCount = attendeeVisitors.filter((entry) => (entry.kind || 'amigo') !== 'visita').length;
+      const restorationCount = attendeeVisitors.filter((entry) => (entry.kind || 'amigo') === 'visita').length;
+      return { ...event, memberCount, friendCount, restorationCount };
+    });
+  }
 
   function buildPreviewWhatsAppText(report) {
     const formData = report?.formData || {};
@@ -2685,29 +2758,45 @@ export function createReporteFeature(options = {}) {
     const visitors = (Array.isArray(formData.visitors) ? formData.visitors : []).filter((entry) => String(entry?.name || '').trim());
     const kids = (Array.isArray(formData.kids) ? formData.kids : []).filter((entry) => String(entry?.name || '').trim());
     const memberAttendance = Array.isArray(formData.memberAttendance) ? formData.memberAttendance : [];
+    const specialEventSummaries = getReportTextSpecialEvents(formData);
+    const reachEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'reach');
+    const sundayEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'sunday');
+    const separateEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'separate');
     const planningPresent = Number(attendanceSummary.planningMembersPresent || memberAttendance.filter((entry) => entry?.planningAttended).length || 0);
     const reachMembers = Number(attendanceSummary.reachMembersPresent || memberAttendance.filter((entry) => entry?.reachAttended).length || 0);
     const sundayMembers = Number(attendanceSummary.sundayMembersPresent || memberAttendance.filter((entry) => entry?.sundayAttended).length || 0);
     const sundayVisitors = visitors.filter((entry) => entry?.sundayAttended).length;
     const sundayKids = kids.filter((entry) => entry?.sundayAttended).length;
-    const lines = [
-      `📋 *Reporte célula ${String(formData.cellNumber || report?.cellNumber || '—')} · Semana ${String(formData.week || report?.week || '—')}*`,
-      formData.leaderName ? `Líder: ${formData.leaderName}` : '',
-      '',
-      '*PLANEACIÓN*',
-      `• Miembros asistentes: ${planningPresent}`,
-      '',
-      '*ALCANCE*',
-      `• Miembros: ${reachMembers}`,
-      `• Amigos: ${visitors.length}`,
-      `• Niños: ${kids.length}`,
-      `• Conversiones: ${Number(attendanceSummary.reachConversions || visitors.filter((entry) => entry?.converted).length || 0)}`,
-      '',
-      '*CULTO INSPIRADOR*',
-      `• Miembros: ${sundayMembers}`,
-      `• Amigos: ${sundayVisitors}`,
-      `• Niños: ${sundayKids}`,
-    ].filter(Boolean);
+    const lines = [];
+    lines.push(`📋 *Reporte célula ${String(formData.cellNumber || report?.cellNumber || '—')} · Semana ${String(formData.week || report?.week || '—')}*`);
+    if (formData.leaderName) lines.push(`Líder: ${formData.leaderName}`);
+    lines.push('');
+    lines.push('*PLANEACIÓN*');
+    lines.push(`• Miembros asistentes: ${planningPresent}`);
+    lines.push('');
+    lines.push('*ALCANCE*');
+    lines.push(`• Miembros: ${reachMembers}`);
+    lines.push(`• Amigos: ${visitors.length}`);
+    lines.push(`• Niños: ${kids.length}`);
+    lines.push(`• Conversiones: ${Number(attendanceSummary.reachConversions || visitors.filter((entry) => entry?.converted).length || 0)}`);
+    reachEventSummaries.forEach((entry) => {
+      lines.push(`• Evento en alcance · ${entry.event}: ${entry.memberCount} hmnos, ${entry.friendCount} amigos${entry.restorationCount ? `, ${entry.restorationCount} restauración` : ''}`);
+    });
+    lines.push('');
+    lines.push('*CULTO INSPIRADOR*');
+    lines.push(`• Miembros: ${sundayMembers}`);
+    lines.push(`• Amigos: ${sundayVisitors}`);
+    lines.push(`• Niños: ${sundayKids}`);
+    sundayEventSummaries.forEach((entry) => {
+      lines.push(`• Evento en culto · ${entry.event}: ${entry.memberCount} hmnos, ${entry.friendCount} amigos${entry.restorationCount ? `, ${entry.restorationCount} restauración` : ''}`);
+    });
+    if (separateEventSummaries.length) {
+      lines.push('');
+      lines.push('*EVENTOS APARTE*');
+      separateEventSummaries.forEach((entry) => {
+        lines.push(`• ${entry.event}: ${entry.memberCount} hmnos, ${entry.friendCount} amigos${entry.restorationCount ? `, ${entry.restorationCount} restauración` : ''}`);
+      });
+    }
     if (formData.notes) {
       lines.push('', '*Notas*', formData.notes);
     }
@@ -2885,6 +2974,10 @@ export function createReporteFeature(options = {}) {
     const previewDialog = currentRoot.querySelector('#report-preview-dialog');
     if (previewDialog instanceof HTMLDialogElement && state.previewReport && !previewDialog.open) {
       previewDialog.showModal();
+      const previewDialogBody = currentRoot.querySelector('#preview-dialog-body');
+      if (previewDialogBody instanceof HTMLElement) {
+        previewDialogBody.scrollTop = 0;
+      }
     }
     const previewVisitorsDialog = currentRoot.querySelector('#preview-visitors-dialog');
     if (previewVisitorsDialog instanceof HTMLDialogElement && state.previewVisitorsOpen && !previewVisitorsDialog.open) {

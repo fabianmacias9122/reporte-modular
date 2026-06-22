@@ -1,6 +1,20 @@
-import { getRcmTotalWeeks, getRcmWeekInfo, getRcmWeeksDefaultClone, titleCase } from '../../../core/rcm/index.js';
+import { getPrimaryRcmSpecialEvent, getRcmTotalWeeks, getRcmWeekInfo, getRcmWeeksDefaultClone, normalizeRcmSpecialEvents, titleCase } from '../../../core/rcm/index.js';
 
 const HISTORY_SCOPE_STORAGE_KEY = 'historyScope';
+
+function withResolvedEventMetadata(entry) {
+  const specialEvents = normalizeRcmSpecialEvents(entry?.specialEvents, entry);
+  const primaryEvent = getPrimaryRcmSpecialEvent({ specialEvents });
+  return {
+    ...entry,
+    specialEvents,
+    event: primaryEvent?.event || null,
+    eventType: primaryEvent?.eventType ?? null,
+    purpose: primaryEvent?.purpose ?? null,
+    rcmKey: primaryEvent?.rcmKey ?? null,
+    captureMode: primaryEvent?.captureMode ?? null,
+  };
+}
 
 export function createSettingsState() {
   return {
@@ -78,10 +92,14 @@ export function normalizeRcmWeeksConfig(rawConfig) {
         phaseLabel: entry.phaseLabel || titleCase(entry.phase || 'Ganar'),
         verb: String(entry.verb || ''),
         verbDesc: String(entry.verbDesc || ''),
-        event: entry.event || null,
-        eventType: entry.eventType || null,
-        purpose: entry.purpose || null,
-        rcmKey: entry.rcmKey || null,
+        ...withResolvedEventMetadata({
+          specialEvents: entry.specialEvents,
+          event: entry.event || null,
+          eventType: entry.eventType || null,
+          purpose: entry.purpose || null,
+          rcmKey: entry.rcmKey || null,
+          captureMode: entry.captureMode || null,
+        }),
       }));
   }
 
@@ -93,10 +111,13 @@ export function normalizeRcmWeeksConfig(rawConfig) {
     if (override.event !== undefined) entry.event = override.event || null;
     if (override.eventType !== undefined) entry.eventType = override.eventType || null;
     if (override.purpose !== undefined) entry.purpose = override.purpose || null;
+    if (override.captureMode !== undefined) entry.captureMode = override.captureMode || null;
+    if (override.specialEvents !== undefined) entry.specialEvents = override.specialEvents;
     if (override.phase !== undefined && override.phase) {
       entry.phase = String(override.phase).toUpperCase();
       entry.phaseLabel = override.phaseLabel || titleCase(override.phase);
     }
+    Object.assign(entry, withResolvedEventMetadata(entry));
   });
 
   return baseWeeks;
@@ -118,6 +139,8 @@ export function createRcmWeekEntry(nextWeekNumber, previousEntry = null) {
     eventType: null,
     purpose: null,
     rcmKey: null,
+    captureMode: null,
+    specialEvents: [],
   };
 }
 
@@ -130,16 +153,60 @@ export function renumberRcmWeeks(weeks) {
   }));
 }
 
+function buildSyncedSpecialEvents(entry, changes = {}) {
+  if (Object.prototype.hasOwnProperty.call(changes, 'specialEvents')) {
+    return changes.specialEvents;
+  }
+
+  const touchesPrimaryEvent = ['event', 'eventType', 'purpose', 'rcmKey', 'captureMode']
+    .some((field) => Object.prototype.hasOwnProperty.call(changes, field));
+  if (!touchesPrimaryEvent) {
+    return entry?.specialEvents;
+  }
+
+  const nextEventName = String(
+    Object.prototype.hasOwnProperty.call(changes, 'event') ? changes.event : entry?.event || ''
+  ).trim();
+  if (!nextEventName) {
+    return [];
+  }
+
+  const currentSpecialEvents = normalizeRcmSpecialEvents(entry?.specialEvents, entry);
+  const currentPrimary = currentSpecialEvents[0] || {};
+  const eventChanged = Object.prototype.hasOwnProperty.call(changes, 'event')
+    && nextEventName !== String(entry?.event || '').trim();
+
+  const nextPrimary = {
+    ...currentPrimary,
+    event: nextEventName,
+    eventType: Object.prototype.hasOwnProperty.call(changes, 'eventType')
+      ? (changes.eventType || null)
+      : (eventChanged ? undefined : currentPrimary.eventType),
+    purpose: Object.prototype.hasOwnProperty.call(changes, 'purpose')
+      ? (changes.purpose || null)
+      : (eventChanged ? undefined : currentPrimary.purpose),
+    rcmKey: Object.prototype.hasOwnProperty.call(changes, 'rcmKey')
+      ? (changes.rcmKey || null)
+      : (eventChanged ? undefined : currentPrimary.rcmKey),
+    captureMode: Object.prototype.hasOwnProperty.call(changes, 'captureMode')
+      ? (changes.captureMode || null)
+      : (eventChanged ? undefined : currentPrimary.captureMode),
+  };
+
+  return [nextPrimary, ...currentSpecialEvents.slice(1)];
+}
+
 export function updateRcmWeekEntry(weeks, weekNumber, changes = {}) {
   return renumberRcmWeeks((Array.isArray(weeks) ? weeks : []).map((entry) => {
     if (entry.week !== weekNumber) return entry;
     const nextPhase = changes.phase !== undefined ? String(changes.phase || entry.phase || 'GANAR').toUpperCase() : entry.phase;
-    return {
+    return withResolvedEventMetadata({
       ...entry,
       ...changes,
+      specialEvents: buildSyncedSpecialEvents(entry, changes),
       phase: nextPhase,
       phaseLabel: changes.phaseLabel || titleCase(nextPhase),
-    };
+    });
   }));
 }
 

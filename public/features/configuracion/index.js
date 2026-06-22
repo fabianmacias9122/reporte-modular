@@ -1,4 +1,4 @@
-import { attachSettingsController } from './controllers/settings.controller.js';
+import { attachSettingsController } from './controllers/settings.controller.js?v=20260622-config-events-fix-1';
 import { fetchSettings, saveFriendTrackingGoals, saveSettings } from './data/settings.repository.js';
 import { applyRcmWeeksConfig, resetRcmWeeks } from '../../core/rcm/index.js';
 import {
@@ -18,7 +18,7 @@ import {
   renderSettingsQuarterBody,
   renderSettingsShell,
   renderSettingsWeekPreview,
-} from './views/settings-shell.js';
+} from './views/settings-shell.js?v=20260622-config-events-fix-2';
 import { getCurrentLang, setLang } from '../../i18n.js';
 
 function canEditOperationalSettings(user) {
@@ -36,6 +36,7 @@ export function createConfiguracionFeature(options = {}) {
     canEditOperational: canEditOperationalSettings(options.currentUser || null),
     mobileSection: 'cycle',
     mobileRcmExpanded: false,
+    rcmEditorWeek: null,
   };
 
   let currentRoot = null;
@@ -78,6 +79,61 @@ export function createConfiguracionFeature(options = {}) {
       }, timeout);
       statusTimeouts.set(key, timeoutId);
     }
+  }
+
+  function appConfirm(message, title = 'Confirmar', options = {}) {
+    return new Promise((resolve) => {
+      const scope = currentRoot || document;
+      const dialog = scope.querySelector('#app-confirm-dialog');
+      const messageNode = scope.querySelector('#app-confirm-message');
+      const titleNode = scope.querySelector('#app-confirm-title');
+      const okButton = scope.querySelector('#app-confirm-ok');
+      const cancelButton = scope.querySelector('#app-confirm-cancel');
+      const okLabel = String(options?.okLabel || 'Confirmar').trim() || 'Confirmar';
+      const cancelLabel = String(options?.cancelLabel || 'Cancelar').trim() || 'Cancelar';
+      if (!(dialog instanceof HTMLDialogElement) || !(messageNode instanceof HTMLElement) || !(okButton instanceof HTMLButtonElement) || !(cancelButton instanceof HTMLButtonElement)) {
+        resolve(window.confirm(message));
+        return;
+      }
+      const previousOkText = okButton.textContent;
+      const previousCancelText = cancelButton.textContent;
+      if (titleNode instanceof HTMLElement) {
+        titleNode.textContent = title;
+      }
+      messageNode.textContent = message;
+      okButton.textContent = okLabel;
+      cancelButton.textContent = cancelLabel;
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+      const cleanup = (result) => {
+        okButton.removeEventListener('click', onOk);
+        cancelButton.removeEventListener('click', onCancel);
+        dialog.removeEventListener('click', onBackdrop);
+        dialog.removeEventListener('cancel', onDialogCancel);
+        if (dialog.open) {
+          dialog.close();
+        }
+        okButton.textContent = previousOkText;
+        cancelButton.textContent = previousCancelText;
+        resolve(result);
+      };
+      const onOk = () => cleanup(true);
+      const onCancel = () => cleanup(false);
+      const onBackdrop = (event) => {
+        if (event.target === dialog) {
+          cleanup(false);
+        }
+      };
+      const onDialogCancel = (event) => {
+        event.preventDefault();
+        cleanup(false);
+      };
+      okButton.addEventListener('click', onOk);
+      cancelButton.addEventListener('click', onCancel);
+      dialog.addEventListener('click', onBackdrop);
+      dialog.addEventListener('cancel', onDialogCancel);
+    });
   }
 
   function buildCyclePayload(formData) {
@@ -234,9 +290,15 @@ export function createConfiguracionFeature(options = {}) {
       render();
       return;
     }
-    const confirmed = window.confirm(`¿Quitar semana ${weekNumber}?`);
+    const confirmed = await appConfirm(`¿Quitar semana ${weekNumber}?`, 'Quitar semana', {
+      okLabel: 'Quitar',
+      cancelLabel: 'Cancelar',
+    });
     if (!confirmed) return;
     state.rcmWeeks = renumberRcmWeeks(state.rcmWeeks.filter((entry) => entry.week !== weekNumber));
+    if (state.rcmEditorWeek === weekNumber) {
+      state.rcmEditorWeek = null;
+    }
     render();
   }
 
@@ -266,7 +328,10 @@ export function createConfiguracionFeature(options = {}) {
   }
 
   async function resetRcmWeeksToDefault() {
-    const confirmed = window.confirm('¿Restablecer valores predeterminados del ciclo?');
+    const confirmed = await appConfirm('¿Restablecer valores predeterminados del ciclo?', 'Restablecer ciclo', {
+      okLabel: 'Restablecer',
+      cancelLabel: 'Cancelar',
+    });
     if (!confirmed) return;
     try {
       resetRcmWeeks();
@@ -274,6 +339,7 @@ export function createConfiguracionFeature(options = {}) {
       await saveSettings({ rcm_weeks_config: serializedConfig }, { requestFn: options.requestFn });
       state.settings = { ...state.settings, rcm_weeks_config: serializedConfig };
       state.rcmWeeks = normalizeRcmWeeksConfig(serializedConfig);
+      state.rcmEditorWeek = null;
       setStatus('verbs', '✓ Restablecido');
       render();
     } catch (error) {
@@ -323,7 +389,20 @@ export function createConfiguracionFeature(options = {}) {
         state.mobileRcmExpanded = !state.mobileRcmExpanded;
         render();
       },
+      openRcmEventsDialog: (weekNumber) => {
+        state.rcmEditorWeek = weekNumber;
+        render();
+      },
+      closeRcmEventsDialog: () => {
+        state.rcmEditorWeek = null;
+        render();
+      },
+      getOpenRcmEventsDialogWeek: () => state.rcmEditorWeek,
     });
+    const dialog = currentRoot.querySelector('#settings-rcm-events-dialog');
+    if (dialog instanceof HTMLDialogElement && !dialog.open) {
+      dialog.showModal();
+    }
   }
 
   return {

@@ -1,4 +1,5 @@
 import { getRcmWeekInfo } from '../../../core/rcm/index.js';
+import { buildHistoryPreviewHtml } from '../../reporte/views/reporte-shell.js?v=20260622-preview-events-fix-1';
 import { formatSeguimientoDate } from '../models/seguimiento-state.js';
 
 function escapeHtml(value) {
@@ -1485,11 +1486,7 @@ function renderSundaySection(members, visitors, kids, data) {
 
 function renderReportPreviewDialog(report, options = {}) {
   const data = report?.formData || {};
-  const attendance = data.attendanceSummary || {};
   const weekInfo = getRcmWeekInfo(data.week || report?.week || '');
-  const visitors = (Array.isArray(data.visitors) ? data.visitors : []).filter((entry) => String(entry?.name || '').trim());
-  const kids = (Array.isArray(data.kids) ? data.kids : []).filter((entry) => String(entry?.name || '').trim());
-  const members = Array.isArray(data.memberAttendance) ? data.memberAttendance : [];
   const phaseLabel = weekInfo?.phaseLabel ? ` · ${weekInfo.phaseLabel}` : '';
   const previewMode = String(options.mode || 'default');
   const cellNumber = String(report?.cellNumber || data.cellNumber || '—');
@@ -1507,35 +1504,11 @@ function renderReportPreviewDialog(report, options = {}) {
         </div>
         <button id="seguimiento-preview-close-btn" type="button" class="btn-icon-round" aria-label="Cerrar">✕</button>
       </div>
-      <div class="dialog-body preview-dialog-body">
-        <div class="preview-header-card">
-          <div class="preview-header-grid">
-            <div><span class="preview-label">Semana</span><strong>${escapeHtml(String(data.week || report?.week || '—'))}${escapeHtml(phaseLabel)}</strong></div>
-            <div><span class="preview-label">Célula</span><strong>${escapeHtml(String(report?.cellNumber || data.cellNumber || '—'))}</strong></div>
-            <div><span class="preview-label">Fecha</span><strong>${escapeHtml(String(data.reportDate || report?.reportDate || '—'))}</strong></div>
-            <div><span class="preview-label">Líder</span><strong>${escapeHtml(String(data.leaderName || report?.leaderName || '—'))}</strong></div>
-            ${data.assistantName ? `<div><span class="preview-label">Asistente</span><strong>${escapeHtml(String(data.assistantName || ''))}</strong></div>` : ''}
-            ${data.hostName ? `<div><span class="preview-label">Anfitrión</span><strong>${escapeHtml(String(data.hostName || ''))}</strong></div>` : ''}
-            ${data.sector ? `<div><span class="preview-label">Sector</span><strong>${escapeHtml(String(data.sector || ''))}</strong></div>` : ''}
-            ${data.networkName ? `<div><span class="preview-label">Red</span><strong>${escapeHtml(String(data.networkName || ''))}</strong></div>` : ''}
-          </div>
-        </div>
-        ${renderPreviewSummaryCards(attendance, data)}
-        ${renderPreviewLegend()}
-        ${renderPlanningSection(members, data)}
-        ${renderReachSection(members, visitors, kids, attendance, data)}
-        ${renderSundaySection(members, visitors, kids, data)}
-        ${data.notes || report?.notes ? `
-          <div class="preview-section-title" style="margin-top:14px">Observaciones generales</div>
-          <p class="preview-notes">${escapeHtml(String(data.notes || report?.notes || ''))}</p>
-        ` : ''}
+      <div class="dialog-body preview-dialog-body">${buildHistoryPreviewHtml(report, { collapseMetrics: true })}</div>
+      <div class="dialog-footer">
+        <button type="button" class="btn btn-ghost" data-action="download-preview-report">${downloadIconSvg(14)} Descargar PNG</button>
+        <button type="button" class="btn btn-ghost" data-action="share-preview-report">${whatsappIconSvg(14)} Compartir por WhatsApp</button>
       </div>
-      ${previewMode === 'supervisor' ? `
-        <div class="dialog-footer">
-          <button type="button" class="btn btn-ghost" data-action="download-preview-report">${downloadIconSvg(14)} Descargar PNG</button>
-          <button type="button" class="btn btn-ghost" data-action="share-preview-report">${whatsappIconSvg(14)} Compartir por WhatsApp</button>
-        </div>
-      ` : ''}
     </dialog>
   `;
 }

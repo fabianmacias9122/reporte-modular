@@ -182,12 +182,136 @@ function memberChip(member, attended, extra, status) {
   return `<div class="ev-chip ev-chip--${cls}"><span class="ev-chip-icon">${icon}</span><span>${escapeHtml(member.name || '')}</span></div>`;
 }
 
-function buildPreviewWeeklySummary(formData) {
+function normalizePreviewSpecialEvents(events, fallbackEntry = null) {
+  const normalizedEvents = (Array.isArray(events) ? events : [])
+    .map((entry) => ({
+      event: String(entry?.event || '').trim(),
+      rcmKey: String(entry?.rcmKey || '').trim(),
+      captureMode: String(entry?.captureMode || '').trim() || 'separate',
+    }))
+    .filter((entry) => entry.event);
+  if (normalizedEvents.length) {
+    return normalizedEvents;
+  }
+  const fallbackEvent = String(fallbackEntry?.event || '').trim();
+  if (!fallbackEvent) {
+    return [];
+  }
+  return [{
+    event: fallbackEvent,
+    rcmKey: String(fallbackEntry?.rcmKey || '').trim(),
+    captureMode: String(fallbackEntry?.captureMode || '').trim() || 'separate',
+  }];
+}
+
+function getPreviewSpecialEvents(formData, weekInfo) {
+  const snapshot = formData?.rcmSnapshot;
+  const snapshotEvents = normalizePreviewSpecialEvents(snapshot?.specialEvents, snapshot);
+  if (snapshotEvents.length) {
+    return snapshotEvents;
+  }
+  return normalizePreviewSpecialEvents(weekInfo?.specialEvents, weekInfo);
+}
+
+function getPreviewPrimaryEventKey(formData, weekInfo, specialEvents = []) {
+  const snapshotKey = String(formData?.rcmSnapshot?.rcmKey || '').trim();
+  if (snapshotKey) {
+    return snapshotKey;
+  }
+  const weekInfoKey = String(weekInfo?.rcmKey || '').trim();
+  if (weekInfoKey) {
+    return weekInfoKey;
+  }
+  return String(specialEvents[0]?.rcmKey || '').trim();
+}
+
+function getVisitorPreviewEventKeys(visitor, specialEvents, fallbackKey = '') {
+  const eventProgress = visitor?.eventProgress && typeof visitor.eventProgress === 'object'
+    ? visitor.eventProgress
+    : {};
+  const attendedKeys = Object.entries(eventProgress).reduce((result, [key, value]) => {
+    const normalizedKey = String(key || '').trim();
+    if (normalizedKey && value) {
+      result.add(normalizedKey);
+    }
+    return result;
+  }, new Set());
+  if (attendedKeys.size) {
+    return attendedKeys;
+  }
+  if (!visitor?.eventAttended) {
+    return new Set();
+  }
+  const fallbackKeys = specialEvents
+    .map((entry) => String(entry?.rcmKey || '').trim())
+    .filter(Boolean);
+  if (fallbackKeys.length) {
+    return new Set(fallbackKeys);
+  }
+  return fallbackKey ? new Set([fallbackKey]) : new Set();
+}
+
+function hasMemberPreviewEvent(member, eventKey) {
+  return Boolean(eventKey && member?.rcmProgress && member.rcmProgress[eventKey]);
+}
+
+function hasMemberPreviewEventForMode(member, event) {
+  const eventKey = String(event?.rcmKey || '').trim();
+  const captureMode = String(event?.captureMode || '').trim() || 'separate';
+  if (captureMode === 'reach') {
+    return Boolean(member?.reachAttended);
+  }
+  if (captureMode === 'sunday') {
+    return Boolean(member?.sundayAttended);
+  }
+  return hasMemberPreviewEvent(member, eventKey);
+}
+
+function visitorMatchesPreviewEvent(visitor, event, specialEvents, fallbackKey = '') {
+  const captureMode = String(event?.captureMode || '').trim() || 'separate';
+  const eventKey = String(event?.rcmKey || '').trim();
+  if (captureMode === 'reach') {
+    return Boolean(visitor?.reachAttended);
+  }
+  if (captureMode === 'sunday') {
+    return Boolean(visitor?.sundayAttended);
+  }
+  return getVisitorPreviewEventKeys(visitor, specialEvents, fallbackKey).has(eventKey);
+}
+
+function buildPreviewEventSummaries(formData, weekInfo) {
+  const specialEvents = getPreviewSpecialEvents(formData, weekInfo);
+  if (!specialEvents.length) {
+    return [];
+  }
+  const fallbackKey = getPreviewPrimaryEventKey(formData, weekInfo, specialEvents);
+  const memberAttendance = Array.isArray(formData?.memberAttendance) ? formData.memberAttendance : [];
+  const visitors = (Array.isArray(formData?.visitors) ? formData.visitors : []).filter((entry) => String(entry?.name || '').trim());
+  return specialEvents.map((event) => {
+    const members = memberAttendance.filter((entry) => hasMemberPreviewEventForMode(entry, event));
+    const attendeeVisitors = visitors.filter((entry) => visitorMatchesPreviewEvent(entry, event, specialEvents, fallbackKey));
+    const friendVisitors = attendeeVisitors.filter((entry) => (entry.kind || 'amigo') !== 'visita');
+    const restorationVisitors = attendeeVisitors.filter((entry) => (entry.kind || 'amigo') === 'visita');
+    return {
+      ...event,
+      memberCount: members.length,
+      friendCount: friendVisitors.length,
+      restorationCount: restorationVisitors.length,
+      totalCount: members.length + attendeeVisitors.length,
+      members,
+      visitors: attendeeVisitors,
+    };
+  });
+}
+
+function buildPreviewWeeklySummary(formData, weekInfo = null) {
   const memberAttendance = Array.isArray(formData?.memberAttendance) ? formData.memberAttendance : [];
   const visitors = (Array.isArray(formData?.visitors) ? formData.visitors : []).filter((entry) => String(entry?.name || '').trim());
   const kids = (Array.isArray(formData?.kids) ? formData.kids : []).filter((entry) => String(entry?.name || '').trim());
   const externalParticipants = (Array.isArray(formData?.externalParticipants) ? formData.externalParticipants : []).filter((entry) => String(entry?.name || '').trim());
   const attendanceSummary = formData?.attendanceSummary || {};
+  const specialEventSummaries = buildPreviewEventSummaries(formData, weekInfo);
+  const levantateSummary = specialEventSummaries.find((entry) => entry.rcmKey === 'levantate');
   const planningMembersPresent = memberAttendance.filter((entry) => entry?.planningAttended).length || Number(attendanceSummary.planningMembersPresent || 0);
   const planningMembersAbsent = Math.max(0, memberAttendance.length - planningMembersPresent) || Number(attendanceSummary.planningMembersAbsent || 0);
   const reachMembersBase = memberAttendance.filter((entry) => entry?.reachAttended).length || Number(attendanceSummary.reachMembersBase || 0);
@@ -202,7 +326,9 @@ function buildPreviewWeeklySummary(formData) {
   const sundayKidsPresent = kids.filter((entry) => entry?.sundayAttended).length || Number(attendanceSummary.sundayKidsPresent || 0);
   const sundayTotal = (sundayMembersPresent + sundayFriendsPresent + sundayKidsPresent) || Number(attendanceSummary.sundayTotal || 0);
   const spiritualParents = new Set(visitors.map((entry) => String(entry?.invitedBy || '').trim()).filter(Boolean)).size;
-  const riseEventFriends = visitors.filter((entry) => entry?.eventAttended).length;
+  const riseEventFriends = levantateSummary
+    ? levantateSummary.friendCount + levantateSummary.restorationCount
+    : visitors.filter((entry) => entry?.eventAttended).length;
   const baptizedFriends = (Array.isArray(formData?.baptisms) ? formData.baptisms : []).filter((entry) => String(entry?.name || '').trim()).length;
   return {
     planningMembersPresent,
@@ -218,6 +344,7 @@ function buildPreviewWeeklySummary(formData) {
     sundayFriendsPresent,
     sundayKidsPresent,
     sundayTotal,
+    specialEventSummaries,
     winSpiritualParents: spiritualParents || Number(attendanceSummary.winSpiritualParents || formData?.winSpiritualParents || 0),
     winFriendsContacted: visitors.length || Number(attendanceSummary.winFriendsContacted || formData?.winFriendsContacted || 0),
     winRiseEventFriends: riseEventFriends || Number(attendanceSummary.winRiseEventFriends || formData?.winRiseEventFriends || 0),
@@ -238,7 +365,7 @@ function getPreviewMetricHint(fieldName, weeklySummary, friendsCount, restorCoun
   return '';
 }
 
-function buildHistoryPreviewHtml(report) {
+export function buildHistoryPreviewHtml(report, options = {}) {
   const formData = report?.formData || {};
   const week = String(formData.week || report?.week || '—');
   const cellNumber = String(formData.cellNumber || report?.cellNumber || '—');
@@ -248,7 +375,11 @@ function buildHistoryPreviewHtml(report) {
   const visitors = (Array.isArray(formData.visitors) ? formData.visitors : []).filter((entry) => String(entry?.name || '').trim());
   const kids = (Array.isArray(formData.kids) ? formData.kids : []).filter((entry) => String(entry?.name || '').trim());
   const externalParticipants = (Array.isArray(formData.externalParticipants) ? formData.externalParticipants : []).filter((entry) => String(entry?.name || '').trim());
-  const weeklySummary = buildPreviewWeeklySummary(formData);
+  const weeklySummary = buildPreviewWeeklySummary(formData, weekInfo);
+  const specialEventSummaries = Array.isArray(weeklySummary.specialEventSummaries) ? weeklySummary.specialEventSummaries : [];
+  const reachEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'reach');
+  const sundayEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'sunday');
+  const separateEventSummaries = specialEventSummaries.filter((entry) => entry.captureMode === 'separate');
   const friendsCount = visitors.filter((entry) => (entry.kind || 'amigo') !== 'visita').length;
   const restorCount = visitors.filter((entry) => (entry.kind || 'amigo') === 'visita').length;
   const conversions = Number(weeklySummary.reachConversions || 0);
@@ -294,6 +425,22 @@ function buildHistoryPreviewHtml(report) {
         </div>`).join('')}
     </div>`;
 
+  const integratedEventParts = [
+    reachEventSummaries.length ? `Alcance: ${reachEventSummaries.map((entry) => entry.event).join(' / ')}` : '',
+    sundayEventSummaries.length ? `Culto inspirador: ${sundayEventSummaries.map((entry) => entry.event).join(' / ')}` : '',
+  ].filter(Boolean);
+  const eventOverviewHtml = (separateEventSummaries.length || integratedEventParts.length) ? `
+    <div class="preview-section-title">Eventos especiales</div>
+    ${separateEventSummaries.length ? `
+      <div class="preview-cards-row" style="margin-bottom:4px">
+        ${separateEventSummaries.map((entry) => `
+          <div class="preview-stat-card">
+            <span class="preview-stat-val">${escapeHtml(String(entry.totalCount))}</span>
+            <span class="preview-stat-lbl">${escapeHtml(entry.event)} · Aparte</span>
+          </div>`).join('')}
+      </div>` : ''}
+    ${integratedEventParts.length ? `<p class="preview-empty-note" style="margin-top:0;margin-bottom:8px">Integrados en la semana: ${escapeHtml(integratedEventParts.join(' · '))}</p>` : ''}` : '';
+
   const summaryItems = [
     conversions ? ['Conversiones', conversions, 'is-highlight'] : null,
     baptisms ? ['Bautismos', baptisms, 'is-highlight'] : null,
@@ -308,6 +455,7 @@ function buildHistoryPreviewHtml(report) {
           <span class="preview-stat-lbl">${escapeHtml(label)}</span>
         </div>`).join('')}
     </div>` : '';
+  const collapseMetrics = Boolean(options?.collapseMetrics);
 
   const metricsHtml = getMetricSectionDefinitions().map((section) => {
     const rows = section.fields.map(([fieldName, label]) => {
@@ -395,14 +543,26 @@ function buildHistoryPreviewHtml(report) {
           </div>`).join('')}
       </div>
     </div>` : '';
+  const reachEventsHtml = reachEventSummaries.length ? `
+    <div class="ev-subsection">
+      <p class="ev-subsection-title">Eventos reportados en alcance</p>
+      <div class="ev-visitor-list">
+        ${reachEventSummaries.map((entry) => `
+          <div class="ev-visitor-row">
+            <span class="ev-visitor-name">${escapeHtml(entry.event)}</span>
+            <span class="ev-visitor-meta">${escapeHtml(String(entry.memberCount))} hmnos · ${escapeHtml(String(entry.friendCount))} amigos${entry.restorationCount ? ` · ${escapeHtml(String(entry.restorationCount))} restauración` : ''}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
   const reachSection = `
     <div class="ev-section">
       <div class="ev-head ev-head--reach">
-        <span class="ev-title">🌱 Alcance</span>
+        <span class="ev-title">🌱 Alcance${reachEventSummaries.length ? ` · ${escapeHtml(reachEventSummaries.map((entry) => entry.event).join(' / '))}` : ''}</span>
         <span class="ev-count">${escapeHtml(String(reachPresent))} hmnos${reachPrivileged ? ` · ${escapeHtml(String(reachPrivileged))} privilegiados` : ''}${externalParticipants.length ? ` · ${escapeHtml(String(externalParticipants.length))} externos` : ''} · ${escapeHtml(String(friendsCount))} amigos${restorCount ? ` · ${escapeHtml(String(restorCount))} restauración` : ''} · ${escapeHtml(String(kids.length))} niños</span>
       </div>
       <div class="ev-body">
         ${planTotal ? `<div class="ev-chip-grid">${memberAttendance.map((entry) => memberChip(entry, entry.reachAttended, entry.reachPrivileged ? 'privileged' : null, entry.reachStatus)).join('')}</div>` : ''}
+        ${reachEventsHtml}
         ${externalHtml}
         ${visitorsHtml}
         ${kidsHtml}
@@ -415,17 +575,55 @@ function buildHistoryPreviewHtml(report) {
   const sundayVisitorsCount = visitors.filter((entry) => entry?.sundayAttended).length;
   const sundayKidsCount = kids.filter((entry) => entry?.sundayAttended).length;
   const sundayTotal = sundayMembersCount + sundayVisitorsCount + sundayKidsCount;
+  const sundayEventsHtml = sundayEventSummaries.length ? `
+    <div class="ev-subsection">
+      <p class="ev-subsection-title">Eventos reportados en culto</p>
+      <div class="ev-visitor-list">
+        ${sundayEventSummaries.map((entry) => `
+          <div class="ev-visitor-row">
+            <span class="ev-visitor-name">${escapeHtml(entry.event)}</span>
+            <span class="ev-visitor-meta">${escapeHtml(String(entry.memberCount))} hmnos · ${escapeHtml(String(entry.friendCount))} amigos${entry.restorationCount ? ` · ${escapeHtml(String(entry.restorationCount))} restauración` : ''}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
   const cultoSection = `
     <div class="ev-section">
       <div class="ev-head ev-head--sunday">
-        <span class="ev-title">Culto inspirador</span>
+        <span class="ev-title">Culto inspirador${sundayEventSummaries.length ? ` · ${escapeHtml(sundayEventSummaries.map((entry) => entry.event).join(' / '))}` : ''}</span>
         <span class="ev-count">${escapeHtml(String(sundayTotal))} total · ${escapeHtml(String(sundayMembersCount))} hmnos · ${escapeHtml(String(sundayVisitorsCount))} amigos · ${escapeHtml(String(sundayKidsCount))} niños</span>
       </div>
       <div class="ev-body">
         ${planTotal ? `<div class="ev-chip-grid">${memberAttendance.map((entry) => memberChip(entry, entry.sundayAttended, null, entry.sundayStatus)).join('')}</div>` : "<p class='preview-empty-note'>Sin registro de asistencia</p>"}
+        ${sundayEventsHtml}
         ${formData.cultoNotes ? `<p class="ev-notes">${escapeHtml(formData.cultoNotes)}</p>` : ''}
       </div>
     </div>`;
+  const separateEventsHtml = separateEventSummaries.map((entry) => {
+    const memberChips = entry.members.length
+      ? `<div class="ev-chip-grid">${entry.members.map((member) => memberChip(member, true, null, 'present')).join('')}</div>`
+      : '<p class="preview-empty-note">Sin miembros registrados en este evento</p>';
+    const visitorRows = entry.visitors.length
+      ? `<div class="ev-visitor-list">${entry.visitors.map((visitor) => `
+          <div class="ev-visitor-row">
+            <span class="ev-visitor-name">${escapeHtml(visitor.name || '')}</span>
+            <span class="ev-visitor-meta">${escapeHtml((visitor.kind || 'amigo') === 'visita' ? 'Restauración' : 'Amigo')}${visitor.invitedBy ? ` · Invitó: ${escapeHtml(visitor.invitedBy)}` : ''}</span>
+          </div>`).join('')}</div>`
+      : '<p class="preview-empty-note">Sin amigos registrados en este evento</p>';
+    return `
+      <div class="ev-section">
+        <div class="ev-head ev-head--planning">
+          <span class="ev-title">Evento aparte · ${escapeHtml(entry.event)}</span>
+          <span class="ev-count">${escapeHtml(String(entry.memberCount))} hmnos · ${escapeHtml(String(entry.friendCount))} amigos${entry.restorationCount ? ` · ${escapeHtml(String(entry.restorationCount))} restauración` : ''}</span>
+        </div>
+        <div class="ev-body">
+          ${memberChips}
+          <div class="ev-subsection">
+            <p class="ev-subsection-title">Asistencia del evento</p>
+            ${visitorRows}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
 
   const legendHtml = `
     <div class="ev-legend">
@@ -479,12 +677,13 @@ function buildHistoryPreviewHtml(report) {
 
   return headerHtml
     + attendanceHtml
+    + eventOverviewHtml
     + summaryHtml
     + legendHtml
-    + `<div class="preview-section-title">Métricas del reporte</div><div class="preview-metrics-grid">${metricsHtml}</div>`
     + planSection
     + reachSection
     + cultoSection
+    + separateEventsHtml
     + notesHtml;
 }
 
@@ -541,7 +740,7 @@ function renderHistoryPreviewDialog(state) {
         </div>
         <button type="button" class="btn-icon-round" data-action="close-preview-report" aria-label="Cerrar">✕</button>
       </div>
-      <div id="preview-dialog-body" class="dialog-body preview-dialog-body">${previewReport ? buildHistoryPreviewHtml(previewReport) : ''}</div>
+      <div id="preview-dialog-body" class="dialog-body preview-dialog-body">${previewReport ? buildHistoryPreviewHtml(previewReport, { collapseMetrics: true }) : ''}</div>
       <div class="dialog-footer" id="preview-dialog-footer">
         <button id="preview-cancel-btn" type="button" class="btn btn-ghost" data-action="close-preview-report">Seguir editando</button>
         <button id="preview-edit-from-seg-btn" type="button" class="btn btn-ghost" data-action="open-preview-report-form" hidden>Editar reporte</button>
@@ -667,13 +866,28 @@ export function renderReporteShell(state) {
   const findVisitorHistoryEntry = state.findVisitorHistoryEntry || (() => null);
   const getVisitorProcessStatusLabel = state.getVisitorProcessStatusLabel || ((value) => value || 'Sin proceso');
   const weekInfo = getRcmWeekInfo(form.week);
+  const weekSpecialEvents = Array.isArray(weekInfo?.specialEvents) ? weekInfo.specialEvents.filter((entry) => String(entry?.event || '').trim()) : [];
+  const reachSpecialEvents = weekSpecialEvents.filter((entry) => String(entry?.captureMode || '').trim() === 'reach');
+  const sundaySpecialEvents = weekSpecialEvents.filter((entry) => String(entry?.captureMode || '').trim() === 'sunday');
+  const separateSpecialEvents = weekSpecialEvents.filter((entry) => String(entry?.captureMode || '').trim() === 'separate');
+  const separateEventColumns = separateSpecialEvents.filter((entry) => String(entry?.rcmKey || '').trim() || String(entry?.event || '').trim());
+  const primarySpecialEvent = separateSpecialEvents[0] || weekSpecialEvents[0] || null;
   const activeQuarter = getQuarterFromDateValue(form.reportDate);
   const activeStage = state.activeStage || 'encabezado';
-  const isEventWeek = Boolean(weekInfo?.isEventWeek && weekInfo?.event);
-  const eventName = weekInfo?.event || 'Evento';
-  const eventKey = weekInfo?.rcmKey || '';
+  const isEventWeek = weekSpecialEvents.length > 0;
+  const eventName = primarySpecialEvent?.event || weekInfo?.event || 'Evento';
+  const eventKey = primarySpecialEvent?.rcmKey || weekInfo?.rcmKey || '';
+  const eventCaptureMode = String(primarySpecialEvent?.captureMode || weekInfo?.captureMode || '').trim() || 'separate';
+  const showSeparateEventCapture = separateSpecialEvents.length > 0 && activeStage === 'culto';
+  const showMemberEventColumn = activeStage !== 'planificacion' && showSeparateEventCapture;
   const showVisitorReach = activeStage !== 'culto';
   const showVisitorSunday = activeStage === 'culto';
+  const reachStageLabel = reachSpecialEvents.length
+    ? reachSpecialEvents.map((entry) => String(entry?.event || '').trim()).filter(Boolean).join(' / ')
+    : 'Alcance';
+  const sundayStageLabel = sundaySpecialEvents.length
+    ? sundaySpecialEvents.map((entry) => String(entry?.event || '').trim()).filter(Boolean).join(' / ')
+    : 'Culto';
   const showVisitorConversion = activeStage !== 'culto';
   const showVisitorContacted = activeStage !== 'culto';
   const showKidReach = activeStage === 'alcance';
@@ -682,7 +896,7 @@ export function renderReporteShell(state) {
     + (showVisitorReach ? 1 : 0)
     + (showVisitorSunday ? 1 : 0)
     + (showVisitorConversion ? 1 : 0)
-    + (isEventWeek ? 1 : 0)
+    + (showSeparateEventCapture ? separateEventColumns.length : 0)
     + (showVisitorContacted ? 1 : 0);
   const kidTableColspan = 5 + (showKidReach ? 1 : 0) + (showKidSunday ? 1 : 0);
   const reachExternalCandidates = state.reachExternalCandidates || [];
@@ -743,7 +957,7 @@ export function renderReporteShell(state) {
         }).join('')}</div>
       </div>`
     : '';
-  const totalAttendanceCols = isEventWeek ? 8 : 7;
+  const totalAttendanceCols = 7 + (showMemberEventColumn ? Math.max(separateEventColumns.length, 1) : 0);
   const quickHistory = findVisitorHistoryEntry(visitorHistory, visitorQuickForm.name);
   const quickHistoricalProcessEntry = quickHistory ? visitorQuickForm.kind === 'amigo' ? (quickHistory.processEntry || 'none') : 'none' : 'none';
   const quickProcessLocked = visitorQuickForm.kind === 'amigo' && quickHistoricalProcessEntry !== 'none';
@@ -862,7 +1076,7 @@ export function renderReporteShell(state) {
               <span class="phase-badge phase-badge-${escapeHtml(phaseKey)}">${escapeHtml(weekInfo.phaseLabel || weekInfo.phase || '')}</span>
               <span class="phase-indicator-range">${escapeHtml(rangeText)}</span>
               ${weekInfo.verb ? `<span class="phase-indicator-verb"><strong>${escapeHtml(weekInfo.verb)}</strong> — ${escapeHtml(weekInfo.verbDesc || '')}</span>` : ''}
-              ${isEventWeek ? `<span class="phase-indicator-event is-event-week">★ Evento: <strong>${escapeHtml(weekInfo.event)}</strong><em class="phase-indicator-event-type">${escapeHtml(weekInfo.eventType || '')}</em><span class="phase-indicator-purpose">${escapeHtml(weekInfo.purpose || '')}</span></span>` : ''}
+              ${isEventWeek ? `<span class="phase-indicator-event is-event-week">★ Eventos especiales: ${weekSpecialEvents.map((specialEvent) => `<span class="phase-indicator-purpose"><strong>${escapeHtml(specialEvent.event || '')}</strong>${specialEvent.eventType ? `<em class="phase-indicator-event-type">${escapeHtml(specialEvent.eventType)}</em>` : ''}${specialEvent.purpose ? `<span class="phase-indicator-purpose">${escapeHtml(specialEvent.purpose)}</span>` : ''}<span class="phase-indicator-purpose">${escapeHtml(specialEvent.captureMode === 'reach' ? 'Se reporta dentro de Alcance' : specialEvent.captureMode === 'sunday' ? 'Se reporta dentro de Culto' : 'Se reporta aparte')}</span></span>`).join('')}${weekSpecialEvents.length > 1 ? `<span class="phase-indicator-purpose">La captura detallada sigue tomando el primer evento mientras se termina la migración multi-evento.</span>` : ''}</span>` : ''}
             ` : ''}
           </div>
         </section>
@@ -993,10 +1207,12 @@ export function renderReporteShell(state) {
                 <th>Miembro</th>
                 <th>Estado semanal</th>
                 <th>Planeación</th>
-                <th>Alcance</th>
+                <th>${escapeHtml(reachStageLabel)}</th>
                 <th>Privilegios</th>
-                <th>Culto</th>
-                <th id="member-event-col-header"${isEventWeek ? '' : ' hidden'}>${escapeHtml(eventName)}</th>
+                <th>${escapeHtml(sundayStageLabel)}</th>
+                ${showMemberEventColumn
+                  ? separateEventColumns.map((specialEvent, eventIndex) => `<th id="member-event-col-header-${escapeHtml(eventIndex)}">${escapeHtml(specialEvent.event || 'Evento')}</th>`).join('')
+                  : ''}
                 <th>Observación</th>
               </tr>
             </thead>
@@ -1006,7 +1222,7 @@ export function renderReporteShell(state) {
                   <td data-label="Miembro">
                     <strong>${escapeHtml(entry.name)}</strong><br>
                     <span class="member-admin-caption">${escapeHtml(formatRole(entry.role || 'member'))}</span>
-                    ${isEventWeek ? renderRcmMiniProgress(entry.rcmProgress) : ''}
+                    ${showMemberEventColumn ? renderRcmMiniProgress(entry.rcmProgress) : ''}
                   </td>
                   <td data-label="Estado">
                     <select data-attendance-index="${escapeHtml(index)}" data-attendance-field="status">
@@ -1020,18 +1236,25 @@ export function renderReporteShell(state) {
                   <td data-label="Planeación" class="checkbox-cell">
                     <input data-attendance-index="${escapeHtml(index)}" data-attendance-field="planningAttended" type="checkbox"${entry.planningAttended ? ' checked' : ''}>
                   </td>
-                  <td data-label="Alcance" class="checkbox-cell">
+                  <td data-label="${escapeHtml(reachStageLabel)}" class="checkbox-cell">
                     <input data-attendance-index="${escapeHtml(index)}" data-attendance-field="reachAttended" type="checkbox"${entry.reachAttended ? ' checked' : ''}>
                   </td>
                   <td data-label="Privilegios" class="checkbox-cell">
                     <input data-attendance-index="${escapeHtml(index)}" data-attendance-field="reachPrivileged" type="checkbox"${entry.reachPrivileged ? ' checked' : ''}${!entry.reachAttended ? ' disabled' : ''}>
                   </td>
-                  <td data-label="Culto" class="checkbox-cell">
+                  <td data-label="${escapeHtml(sundayStageLabel)}" class="checkbox-cell">
                     <input data-attendance-index="${escapeHtml(index)}" data-attendance-field="sundayAttended" type="checkbox"${entry.sundayAttended ? ' checked' : ''}>
                   </td>
-                  <td data-label="${escapeHtml(eventName)}" class="checkbox-cell event-col"${isEventWeek ? '' : ' hidden'}>
-                    ${isEventWeek && eventKey ? `<input data-attendance-index="${escapeHtml(index)}" data-attendance-field="rcmEventAttended" data-rcm-key="${escapeHtml(eventKey)}" data-person-id="${escapeHtml(String(entry.personId || ''))}" type="checkbox"${entry.rcmProgress?.[eventKey] ? ' checked' : ''} title="${escapeHtml(entry.rcmProgress?.[eventKey] ? `${eventName} · ${entry.rcmProgress[eventKey]}` : `Sin registro de ${eventName}`)}">` : ''}
-                  </td>
+                  ${showMemberEventColumn
+                    ? separateEventColumns.map((specialEvent) => {
+                      const specialEventName = String(specialEvent?.event || 'Evento').trim() || 'Evento';
+                      const specialEventKey = String(specialEvent?.rcmKey || '').trim();
+                      const progressValue = specialEventKey ? entry.rcmProgress?.[specialEventKey] : null;
+                      return `<td data-label="${escapeHtml(specialEventName)}" class="checkbox-cell event-col">
+                        ${specialEventKey ? `<input data-attendance-index="${escapeHtml(index)}" data-attendance-field="rcmEventAttended" data-rcm-key="${escapeHtml(specialEventKey)}" data-person-id="${escapeHtml(String(entry.personId || ''))}" type="checkbox"${progressValue ? ' checked' : ''} title="${escapeHtml(progressValue ? `${specialEventName} · ${progressValue}` : `Sin registro de ${specialEventName}`)}">` : ''}
+                      </td>`;
+                    }).join('')
+                    : ''}
                   <td data-label="Observación">
                     <input data-attendance-index="${escapeHtml(index)}" data-attendance-field="note" type="text" value="${escapeHtml(entry.note || '')}" placeholder="Observaciones...">
                   </td>
@@ -1124,11 +1347,11 @@ export function renderReporteShell(state) {
           <div class="visitor-quick-toggles">
             ${showVisitorReach ? `<label class="quick-toggle-field">
               <input data-visitor-field="reachAttended" type="checkbox"${visitorQuickForm.reachAttended ? ' checked' : ''}>
-              <span>Alcance</span>
+              <span>${escapeHtml(reachStageLabel)}</span>
             </label>` : ''}
             ${showVisitorSunday ? `<label class="quick-toggle-field">
               <input data-visitor-field="sundayAttended" type="checkbox"${visitorQuickForm.sundayAttended ? ' checked' : ''}>
-              <span>Culto</span>
+              <span>${escapeHtml(sundayStageLabel)}</span>
             </label>` : ''}
             <label class="quick-toggle-field">
               <input data-visitor-field="firstVisit" type="checkbox"${visitorQuickForm.firstVisit ? ' checked' : ''}>
@@ -1138,10 +1361,14 @@ export function renderReporteShell(state) {
               <input data-visitor-field="converted" type="checkbox"${visitorQuickForm.converted ? ' checked' : ''}>
               <span>Conversión</span>
             </label>
-            ${isEventWeek ? `<label class="quick-toggle-field">
-              <input data-visitor-field="eventAttended" type="checkbox"${visitorQuickForm.eventAttended ? ' checked' : ''}${isEventWeek ? '' : ' hidden'}>
-              <span>${escapeHtml(eventName)}</span>
-            </label>` : ''}
+            ${showSeparateEventCapture ? separateEventColumns.map((specialEvent) => {
+              const specialEventName = String(specialEvent?.event || 'Evento').trim() || 'Evento';
+              const specialEventKey = String(specialEvent?.rcmKey || '').trim();
+              return `<label class="quick-toggle-field">
+                <input data-visitor-field="eventProgress" data-rcm-key="${escapeHtml(specialEventKey)}" type="checkbox"${visitorQuickForm.eventProgress?.[specialEventKey] ? ' checked' : ''}>
+                <span>${escapeHtml(specialEventName)}</span>
+              </label>`;
+            }).join('') : ''}
           </div>
           <div class="visitor-quick-actions">
             <button type="button" class="btn-with-icon" data-action="add-visitor">
@@ -1170,12 +1397,14 @@ export function renderReporteShell(state) {
               <tr>
                 <th>Nombre</th>
                 <th>Invitó</th>
-                ${showVisitorReach ? '<th class="col-alcance">Alcance</th>' : ''}
-                ${showVisitorSunday ? '<th class="col-culto">Culto</th>' : ''}
+                ${showVisitorReach ? `<th class="col-alcance">${escapeHtml(reachStageLabel)}</th>` : ''}
+                ${showVisitorSunday ? `<th class="col-culto">${escapeHtml(sundayStageLabel)}</th>` : ''}
                 <th>Primera vez</th>
                 <th>Proceso</th>
                 ${showVisitorConversion ? '<th class="col-conversion">Conversión</th>' : ''}
-                <th id="visitor-event-col-header"${isEventWeek ? '' : ' hidden'}>${escapeHtml(eventName)}</th>
+                ${showSeparateEventCapture
+                  ? separateEventColumns.map((specialEvent, eventIndex) => `<th id="visitor-event-col-header-${escapeHtml(eventIndex)}">${escapeHtml(specialEvent.event || 'Evento')}</th>`).join('')
+                  : ''}
                 ${showVisitorContacted ? '<th class="col-contactado">Contactado</th>' : ''}
                 <th>Teléfono</th>
                 <th>Observación</th>
@@ -1242,10 +1471,10 @@ export function renderReporteShell(state) {
                       ${state.invitedByOptions.map((option) => `<option value="${escapeHtml(option.value)}"${visitor.invitedBy === option.value ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
                     </select>
                   </td>
-                  ${showVisitorReach ? `<td data-label="Alcance" class="checkbox-cell col-alcance">
+                  ${showVisitorReach ? `<td data-label="${escapeHtml(reachStageLabel)}" class="checkbox-cell col-alcance">
                     <input type="checkbox" data-visitor-index="${escapeHtml(index)}" data-visitor-update-field="reachAttended"${visitor.reachAttended ? ' checked' : ''}>
                   </td>` : ''}
-                  ${showVisitorSunday ? `<td data-label="Culto" class="checkbox-cell col-culto">
+                  ${showVisitorSunday ? `<td data-label="${escapeHtml(sundayStageLabel)}" class="checkbox-cell col-culto">
                     <input type="checkbox" data-visitor-index="${escapeHtml(index)}" data-visitor-update-field="sundayAttended"${visitor.sundayAttended ? ' checked' : ''}>
                   </td>` : ''}
                   <td data-label="Primera vez" class="checkbox-cell">
@@ -1261,9 +1490,13 @@ export function renderReporteShell(state) {
                       </select>`}
                   </td>
                   ${showVisitorConversion ? convertedCell : ''}
-                  <td data-label="Evento" class="checkbox-cell event-col"${isEventWeek ? '' : ' hidden'}>
-                    ${isEventWeek ? `<input type="checkbox" data-visitor-index="${escapeHtml(index)}" data-visitor-update-field="eventAttended"${visitor.eventAttended ? ' checked' : ''}>` : ''}
-                  </td>
+                  ${showSeparateEventCapture ? separateEventColumns.map((specialEvent) => {
+                    const specialEventName = String(specialEvent?.event || 'Evento').trim() || 'Evento';
+                    const specialEventKey = String(specialEvent?.rcmKey || '').trim();
+                    return `<td data-label="${escapeHtml(specialEventName)}" class="checkbox-cell event-col">
+                      <input type="checkbox" data-visitor-index="${escapeHtml(index)}" data-visitor-update-field="eventProgress:${escapeHtml(specialEventKey)}"${visitor.eventProgress?.[specialEventKey] ? ' checked' : ''}>
+                    </td>`;
+                  }).join('') : ''}
                   ${showVisitorContacted ? `<td data-label="Contactado" class="checkbox-cell col-contactado">
                     <input type="checkbox" data-visitor-index="${escapeHtml(index)}" data-visitor-update-field="contacted"${visitor.contacted ? ' checked' : ''}>
                   </td>` : ''}

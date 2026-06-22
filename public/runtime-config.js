@@ -2,6 +2,7 @@
 // Set window.REPORTE_API_BASE_URL to point this frontend to a backend URL.
 const localDevApiBaseByPort = {
 	'8080': 'http://127.0.0.1:8090',
+	'8081': 'http://127.0.0.1:8090',
 	'8091': 'http://127.0.0.1:8090',
 };
 

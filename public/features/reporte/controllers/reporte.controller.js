@@ -15,8 +15,14 @@ function readVisitorQuickSnapshot(scope) {
   const reachField = scope.querySelector('input[data-visitor-field="reachAttended"]');
   const firstVisitField = scope.querySelector('input[data-visitor-field="firstVisit"]');
   const convertedField = scope.querySelector('input[data-visitor-field="converted"]');
-  const eventField = scope.querySelector('input[data-visitor-field="eventAttended"]');
   const sundayField = scope.querySelector('input[data-visitor-field="sundayAttended"]');
+  const eventProgress = Array.from(scope.querySelectorAll('input[data-visitor-field="eventProgress"]')).reduce((result, field) => {
+    if (!(field instanceof HTMLInputElement)) return result;
+    const rcmKey = String(field.dataset.rcmKey || '').trim();
+    if (!rcmKey) return result;
+    result[rcmKey] = field.checked;
+    return result;
+  }, {});
   return {
     historySelection: historyField instanceof HTMLSelectElement ? historyField.value : '',
     name: nameField instanceof HTMLInputElement ? nameField.value : '',
@@ -26,7 +32,8 @@ function readVisitorQuickSnapshot(scope) {
     reachAttended: reachField instanceof HTMLInputElement ? reachField.checked : true,
     firstVisit: firstVisitField instanceof HTMLInputElement ? firstVisitField.checked : false,
     converted: convertedField instanceof HTMLInputElement ? convertedField.checked : false,
-    eventAttended: eventField instanceof HTMLInputElement ? eventField.checked : false,
+    eventAttended: Object.values(eventProgress).some(Boolean),
+    eventProgress,
     sundayAttended: sundayField instanceof HTMLInputElement ? sundayField.checked : false,
   };
 }
@@ -363,7 +370,10 @@ export function attachReporteController(root, actions) {
         attendanceIndex,
         attendanceField,
         target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.value,
-        { personId: String(target.dataset.personId || '') }
+        {
+          personId: String(target.dataset.personId || ''),
+          rcmKey: String(target.dataset.rcmKey || ''),
+        }
       ]);
       return;
     }
@@ -419,7 +429,10 @@ export function attachReporteController(root, actions) {
     const visitorField = String(target.dataset.visitorField || '');
     if (visitorField) {
       if (target instanceof HTMLInputElement && target.type === 'text') return;
-      await actions.updateVisitorQuick(visitorField, target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.value);
+      const resolvedVisitorField = visitorField === 'eventProgress'
+        ? `eventProgress:${String(target.dataset.rcmKey || '').trim()}`
+        : visitorField;
+      await actions.updateVisitorQuick(resolvedVisitorField, target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.value);
       return;
     }
 

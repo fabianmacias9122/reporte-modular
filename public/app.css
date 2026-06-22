@@ -724,6 +724,7 @@ body[data-active-stage="culto"] #copy-planning-to-reach { display: none !importa
 .settings-field-block {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .settings-compact-grid {
@@ -754,6 +755,8 @@ body[data-active-stage="culto"] #copy-planning-to-reach { display: none !importa
 
 .settings-input {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 34px;
   padding: 7px 10px;
   border-radius: 12px;
@@ -865,6 +868,10 @@ body[data-active-stage="culto"] #copy-planning-to-reach { display: none !importa
   border-radius: 14px;
   background: rgba(240, 244, 255, 0.72);
   border: 1px solid rgba(108, 136, 201, 0.16);
+}
+
+.settings-cycle-basics > * {
+  min-width: 0;
 }
 
 .settings-quarter-body {
@@ -1085,6 +1092,12 @@ body[data-active-stage="culto"] #copy-planning-to-reach { display: none !importa
 
   #settings-rcm-verbs-card {
     grid-column: auto;
+  }
+}
+
+@media (max-width: 960px) {
+  .settings-cycle-basics {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -5319,6 +5332,16 @@ input[type="checkbox"]:disabled { opacity: 0.28; cursor: not-allowed; }
 .rcm-verbs-table tr:last-child td { border-bottom: none; }
 .rcm-verbs-table input[type="text"] { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 0.82rem; font-family: inherit; background: var(--panel); color: var(--text); }
 .rcm-verbs-table input[type="text"]:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
+.rvt-special-events { display: grid; gap: 8px; }
+.rvt-special-event-item { display: grid; grid-template-columns: minmax(0, 1fr) 34px; grid-template-areas: "event event" "mode remove"; gap: 6px; align-items: start; }
+.rvt-special-event,
+.rvt-special-capture-mode { width: 100%; min-width: 0; }
+.rvt-special-event { grid-area: event; }
+.rvt-special-capture-mode { grid-area: mode; }
+.rvt-special-remove { grid-area: remove; width: 34px; min-width: 34px; height: 38px; padding: 0; border: 1px solid rgba(115, 137, 196, 0.24); border-radius: 10px; background: #fff; color: #6b7a99; cursor: pointer; }
+.rvt-special-remove:hover { color: var(--danger); border-color: rgba(159, 47, 33, 0.24); background: var(--danger-soft); }
+.rvt-special-add { width: auto; justify-self: start; padding: 10px 16px; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--brand), #4354cc); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.rvt-special-add:hover { filter: brightness(1.03); }
 
 /* ── Vista compacta de tarjetas para pantallas pequenas ── */
 @media (max-width: 720px) {
@@ -5362,6 +5385,11 @@ input[type="checkbox"]:disabled { opacity: 0.28; cursor: not-allowed; }
   .rcm-verbs-table td:nth-child(3)::before { content: "Verbo"; }
   .rcm-verbs-table td:nth-child(4)::before { content: "Descripción"; }
   .rcm-verbs-table td:nth-child(5)::before { content: "Evento catalizador"; }
+  .rvt-special-event-item { grid-template-columns: minmax(0, 1fr) 34px; grid-template-areas: "event event" "mode remove"; }
+  .rvt-special-event { grid-area: event; }
+  .rvt-special-capture-mode { grid-area: mode; }
+  .rvt-special-remove { grid-area: remove; justify-self: end; height: 34px; }
+  .rvt-special-add { width: 100%; justify-self: stretch; }
   .rcm-verbs-table input,
   .rcm-verbs-table select,
   .rcm-verbs-table textarea {

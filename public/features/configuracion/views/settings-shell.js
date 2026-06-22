@@ -1,3 +1,4 @@
+import { RCM_EVENT_CAPTURE_MODE_OPTIONS } from '../../../core/rcm/index.js';
 import { getCurrentQuarterSummary, getGoalsScopeLabel, getWeekPreviewSummary } from '../models/settings-state.js';
 
 function escapeHtml(value) {
@@ -21,9 +22,148 @@ function renderStatus(status) {
 const RCM_EVENT_OPTIONS = [
   ['', '—'],
   ['Levantate', 'Levantate'],
+  ['Fiesta del Amigo', 'Fiesta del Amigo'],
   ['Restauracion', 'Restauracion'],
   ['Cielos Abiertos', 'Cielos Abiertos'],
 ];
+
+function getWeekSpecialEvents(week) {
+  const specialEvents = Array.isArray(week?.specialEvents)
+    ? week.specialEvents.filter((entry) => String(entry?.event || '').trim())
+    : [];
+  if (specialEvents.length) return specialEvents;
+  if (week?.event) {
+    return [{
+      event: week.event,
+      captureMode: week.captureMode || 'separate',
+    }];
+  }
+  return [];
+}
+
+function getCaptureModeLabel(value) {
+  return RCM_EVENT_CAPTURE_MODE_OPTIONS.find((option) => option.value === value)?.label || 'Aparte';
+}
+
+function renderRcmSpecialEventSummary(week) {
+  const specialEvents = getWeekSpecialEvents(week);
+  const summaryCountLabel = `${specialEvents.length || 0} ${specialEvents.length === 1 ? 'evento' : 'eventos'}`;
+  if (!specialEvents.length) {
+    return `
+      <div class="rvt-special-summary is-empty">
+        <div class="rvt-special-summary-head">
+          <span class="rvt-special-summary-kicker">Eventos</span>
+          <span class="rvt-special-summary-count is-empty">0</span>
+        </div>
+        <div class="rvt-special-empty-state">
+          <div class="rvt-special-empty-copy">
+            <strong>Sin eventos configurados</strong>
+            <span>Agrega uno o varios eventos.</span>
+          </div>
+        </div>
+        <button type="button" class="rvt-special-edit is-primary" data-week="${escapeHtml(week.week)}">Agregar eventos</button>
+      </div>
+    `;
+  }
+  return `
+    <div class="rvt-special-summary">
+      <div class="rvt-special-summary-head">
+        <span class="rvt-special-summary-kicker">Eventos</span>
+        <span class="rvt-special-summary-count">${escapeHtml(specialEvents.length)}</span>
+      </div>
+      <p class="rvt-special-summary-note">${escapeHtml(summaryCountLabel)} configurados para esta semana.</p>
+      <div class="rvt-special-detail-list">
+        ${specialEvents.map((eventEntry) => `
+          <div class="rvt-special-detail-row" data-capture-mode="${escapeHtml(String(eventEntry.captureMode || 'separate'))}">
+            <strong>${escapeHtml(eventEntry.event || 'Evento')}</strong>
+            <span>${escapeHtml(getCaptureModeLabel(String(eventEntry.captureMode || 'separate')))}</span>
+          </div>
+        `).join('')}
+      </div>
+      <button type="button" class="rvt-special-edit" data-week="${escapeHtml(week.week)}">Editar eventos</button>
+    </div>
+  `;
+}
+
+function renderRcmSpecialEventEditor(week) {
+  const specialEvents = getWeekSpecialEvents(week);
+  return `
+    <div class="rvt-special-events">
+      ${specialEvents.map((eventEntry, eventIndex) => `
+        <div class="rvt-special-event-item" data-week="${escapeHtml(week.week)}" data-event-index="${escapeHtml(eventIndex)}">
+          <div class="rvt-special-event-head">
+            <span class="rvt-special-event-title">Evento ${escapeHtml(eventIndex + 1)}</span>
+            <button type="button" class="rvt-special-remove" data-week="${escapeHtml(week.week)}" data-event-index="${escapeHtml(eventIndex)}" title="Quitar evento" aria-label="Quitar evento">✕</button>
+          </div>
+          <label class="rvt-special-field">
+            <span class="rvt-special-field-label">Evento</span>
+            <select class="rvt-special-event" data-week="${escapeHtml(week.week)}" data-event-index="${escapeHtml(eventIndex)}">
+              ${[
+                ...RCM_EVENT_OPTIONS,
+                ...((eventEntry.event && !RCM_EVENT_OPTIONS.some(([value]) => value === eventEntry.event)) ? [[eventEntry.event, eventEntry.event]] : []),
+              ].map(([value, label]) => `<option value="${escapeHtml(value)}"${String(eventEntry.event || '') === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rvt-special-field">
+            <span class="rvt-special-field-label">Captura</span>
+            <select class="rvt-special-capture-mode" data-week="${escapeHtml(week.week)}" data-event-index="${escapeHtml(eventIndex)}"${eventEntry.event ? '' : ' disabled'}>
+              ${RCM_EVENT_CAPTURE_MODE_OPTIONS.map(({ value, label }) => `<option value="${escapeHtml(value)}"${String(eventEntry.captureMode || 'separate') === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+            </select>
+          </label>
+        </div>
+      `).join('')}
+      <button type="button" class="rvt-special-add" data-week="${escapeHtml(week.week)}">+ Agregar evento</button>
+    </div>
+  `;
+}
+
+function renderRcmEventsDialog(state) {
+  const activeWeekNumber = Number(state.rcmEditorWeek || 0);
+  const activeWeek = (Array.isArray(state.rcmWeeks) ? state.rcmWeeks : []).find((week) => week.week === activeWeekNumber) || null;
+  if (!activeWeek) return '';
+  return `
+    <dialog id="settings-rcm-events-dialog" class="app-dialog app-dialog-wide settings-rcm-events-dialog">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">Semana ${escapeHtml(activeWeek.week)}</p>
+          <h3>Editar eventos RCM</h3>
+        </div>
+        <button type="button" class="btn-icon-round" data-action="close-rcm-events-dialog" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="dialog-body rcm-dialog-body settings-rcm-events-dialog__body">
+        <div class="settings-rcm-events-dialog__meta">
+          <span class="settings-rcm-events-dialog__verb">${escapeHtml(activeWeek.phaseLabel || activeWeek.phase || '')}</span>
+          <strong>${escapeHtml(activeWeek.verb || '')}</strong>
+          <span>${escapeHtml(activeWeek.verbDesc || '')}</span>
+        </div>
+        ${renderRcmSpecialEventEditor(activeWeek)}
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="secondary" data-action="close-rcm-events-dialog">Listo</button>
+      </div>
+    </dialog>
+  `;
+}
+
+function renderAppConfirmDialog() {
+  return `
+    <dialog id="app-confirm-dialog" class="app-dialog">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">Confirmación</p>
+          <h3 id="app-confirm-title">Confirmar</h3>
+        </div>
+      </div>
+      <div class="dialog-body">
+        <p id="app-confirm-message"></p>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" id="app-confirm-cancel" class="btn-ghost">Cancelar</button>
+        <button type="button" id="app-confirm-ok" class="btn-primary">Confirmar</button>
+      </div>
+    </dialog>
+  `;
+}
 
 export function renderSettingsQuarterBody() {
   const quarter = getCurrentQuarterSummary();
@@ -68,12 +208,7 @@ function renderRcmVerbsRows(rcmWeeks) {
       <td><input type="text" class="rvt-verb" data-week="${escapeHtml(week.week)}" value="${escapeHtml(week.verb || '')}" maxlength="20" style="text-transform:uppercase"></td>
       <td><textarea class="rvt-desc" data-week="${escapeHtml(week.week)}" maxlength="120" rows="3">${escapeHtml(week.verbDesc || '')}</textarea></td>
       <td>
-        <select class="rvt-event" data-week="${escapeHtml(week.week)}" style="width:100%;font-size:0.78rem;padding:4px">
-          ${[
-            ...RCM_EVENT_OPTIONS,
-            ...((week.event && !RCM_EVENT_OPTIONS.some(([value]) => value === week.event)) ? [[week.event, week.event]] : []),
-          ].map(([value, label]) => `<option value="${escapeHtml(value)}"${String(week.event || '') === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
-        </select>
+        ${renderRcmSpecialEventSummary(week)}
       </td>
       <td>
         <button type="button" class="rvt-remove" data-week="${escapeHtml(week.week)}" title="Quitar semana" aria-label="Quitar semana ${escapeHtml(week.week)}">
@@ -365,7 +500,7 @@ export function renderSettingsShell(state) {
                           <th style="width:120px">Etapa</th>
                           <th style="width:130px">Verbo</th>
                           <th>Descripción</th>
-                          <th style="width:150px">Evento catalizador</th>
+                          <th style="width:180px">Evento y captura</th>
                           <th style="width:44px" aria-label="Acciones"></th>
                         </tr>
                       </thead>
@@ -400,6 +535,8 @@ export function renderSettingsShell(state) {
           ` : ''}
         </div>
       </div>
+      ${renderRcmEventsDialog(state)}
+      ${renderAppConfirmDialog()}
     </section>
   `;
 }

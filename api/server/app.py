@@ -146,7 +146,6 @@ class _TursoConnection:
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PUBLIC_DIR = PROJECT_ROOT / "public"
-NEXT_PUBLIC_DIR = PROJECT_ROOT / "frontend-next" / "public"
 DATA_DIR = PROJECT_ROOT / "data"
 DB_PATH = DATA_DIR / "reporte-celular.db"
 
@@ -172,17 +171,17 @@ BACKEND_RCM_WEEKS = [
     {"week": 3, "phase": "GANAR", "verb": "CONTACTAR"},
     {"week": 4, "phase": "GANAR", "verb": "CONFIRMAR"},
     {"week": 5, "phase": "GANAR", "verb": "DESATAR"},
-    {"week": 6, "phase": "GANAR", "verb": "LLEVAR", "event": "Levántate", "rcmKey": "levantate"},
+    {"week": 6, "phase": "GANAR", "verb": "LLEVAR", "event": "Levántate", "rcmKey": "levantate", "captureMode": "separate", "specialEvents": [{"event": "Levántate", "rcmKey": "levantate", "captureMode": "separate"}]},
     {"week": 7, "phase": "CONSOLIDAR", "verb": "MOTIVAR"},
     {"week": 8, "phase": "CONSOLIDAR", "verb": "INTEGRAR"},
     {"week": 9, "phase": "CONSOLIDAR", "verb": "CONSOLIDAR"},
     {"week": 10, "phase": "CONSOLIDAR", "verb": "PREPARAR"},
-    {"week": 11, "phase": "CONSOLIDAR", "verb": "SANTIFICAR", "event": "Restauración", "rcmKey": "restauracion"},
+    {"week": 11, "phase": "CONSOLIDAR", "verb": "SANTIFICAR", "event": "Restauración", "rcmKey": "restauracion", "captureMode": "separate", "specialEvents": [{"event": "Restauración", "rcmKey": "restauracion", "captureMode": "separate"}]},
     {"week": 12, "phase": "DISCIPULAR", "verb": "MATRICULAR"},
     {"week": 13, "phase": "DISCIPULAR", "verb": "CONSERVAR"},
     {"week": 14, "phase": "DISCIPULAR", "verb": "DOCTRINAR"},
     {"week": 15, "phase": "DISCIPULAR", "verb": "DISCIPULAR"},
-    {"week": 16, "phase": "DISCIPULAR", "verb": "BAUTIZAR", "event": "Cielos Abiertos", "rcmKey": "cielosAbiertos"},
+    {"week": 16, "phase": "DISCIPULAR", "verb": "BAUTIZAR", "event": "Cielos Abiertos", "rcmKey": "cielosAbiertos", "captureMode": "separate", "specialEvents": [{"event": "Cielos Abiertos", "rcmKey": "cielosAbiertos", "captureMode": "separate"}]},
 ]
 
 # Master password (soporte): si está definido en el entorno, permite ingresar
@@ -229,6 +228,23 @@ def _normalize_username(raw: str) -> str:
     s = re.sub(r"[^a-z0-9._-]+", "", s)
     return s
 
+
+def _normalize_event_name(raw: str) -> str:
+    if not raw:
+        return ""
+    s = unicodedata.normalize("NFKD", str(raw)).encode("ascii", "ignore").decode("ascii")
+    return s.lower().strip()
+
+
+def _derive_rcm_key(raw: str) -> str:
+    normalized = _normalize_event_name(raw)
+    if not normalized:
+        return ""
+    parts = [part for part in re.sub(r"[^a-z0-9]+", " ", normalized).split() if part]
+    if not parts:
+        return ""
+    return "".join(part if index == 0 else part[:1].upper() + part[1:] for index, part in enumerate(parts))
+
 def _is_valid_username(u: str) -> bool:
     return bool(u) and 2 <= len(u) <= 40 and bool(re.fullmatch(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?", u))
 
@@ -244,6 +260,8 @@ def create_app() -> Flask:
             "https://reporte-rcm.onrender.com",
             "http://127.0.0.1:8080",
             "http://localhost:8080",
+            "http://127.0.0.1:8081",
+            "http://localhost:8081",
             "http://127.0.0.1:8091",
             "http://localhost:8091",
             "http://127.0.0.1:8090",
@@ -288,15 +306,6 @@ def create_app() -> Flask:
     @app.get("/")
     def index() -> Response:
         return send_from_directory(PUBLIC_DIR, "index.html")
-
-    @app.get("/next")
-    @app.get("/next/")
-    def next_index() -> Response:
-        return send_from_directory(NEXT_PUBLIC_DIR, "index.html")
-
-    @app.get("/next/<path:asset_path>")
-    def next_assets(asset_path: str) -> Response:
-        return send_from_directory(NEXT_PUBLIC_DIR, asset_path)
 
     @app.get("/api/health")
     def health() -> Response:
@@ -2322,27 +2331,84 @@ def normalize_report_rcm_snapshot(payload: dict) -> dict:
         week_number = 0
 
     meta = get_backend_rcm_meta(week_number)
+    fallback_events = meta.get("specialEvents") if isinstance(meta.get("specialEvents"), list) else []
+    def normalize_special_event(entry: dict | None, fallback: dict | None = None) -> dict:
+        event_name = str((entry or {}).get("event", "")).strip() or str((fallback or {}).get("event", "")).strip()
+        rcm_key = str((entry or {}).get("rcmKey", "")).strip() or str((fallback or {}).get("rcmKey", "")).strip() or _derive_rcm_key(event_name)
+        capture_mode = str((entry or {}).get("captureMode", "")).strip() or str((fallback or {}).get("captureMode", "")).strip() or ("separate" if event_name else "")
+        return {
+            **(fallback or {}),
+            **(entry or {}),
+            "event": event_name,
+            "rcmKey": rcm_key,
+            "captureMode": capture_mode,
+        }
+
     if isinstance(raw_snapshot, dict):
+        raw_special_events = raw_snapshot.get("specialEvents") if isinstance(raw_snapshot.get("specialEvents"), list) else fallback_events
+        special_events = [normalize_special_event(entry) for entry in raw_special_events if isinstance(entry, dict) and str(entry.get("event", "")).strip()]
+        primary_event = special_events[0] if special_events else {
+            "event": str(raw_snapshot.get("event", "")).strip() or str(meta.get("event", "")).strip(),
+            "rcmKey": str(raw_snapshot.get("rcmKey", "")).strip() or str(meta.get("rcmKey", "")).strip() or _derive_rcm_key(str(raw_snapshot.get("event", "")).strip() or str(meta.get("event", "")).strip()),
+            "captureMode": str(raw_snapshot.get("captureMode", "")).strip() or str(meta.get("captureMode", "")).strip(),
+        }
         normalized = {
             "week": int(raw_snapshot.get("week") or week_number or 0),
             "phase": str(raw_snapshot.get("phase", "")).strip() or str(meta.get("phase", "")).strip(),
             "phaseLabel": str(raw_snapshot.get("phaseLabel", "")).strip(),
             "verb": str(raw_snapshot.get("verb", "")).strip() or str(meta.get("verb", "")).strip(),
-            "event": str(raw_snapshot.get("event", "")).strip() or str(meta.get("event", "")).strip(),
-            "rcmKey": str(raw_snapshot.get("rcmKey", "")).strip() or str(meta.get("rcmKey", "")).strip(),
+            "specialEvents": special_events,
+            "event": str(primary_event.get("event", "")).strip(),
+            "rcmKey": str(primary_event.get("rcmKey", "")).strip(),
+            "captureMode": str(primary_event.get("captureMode", "")).strip() or ("separate" if str(primary_event.get("event", "")).strip() else ""),
         }
     else:
+        special_events = [normalize_special_event(entry) for entry in fallback_events if isinstance(entry, dict) and str(entry.get("event", "")).strip()]
+        primary_event = special_events[0] if special_events else normalize_special_event(meta, meta)
         normalized = {
             "week": week_number,
             "phase": str(meta.get("phase", "")).strip(),
             "phaseLabel": "",
             "verb": str(meta.get("verb", "")).strip(),
-            "event": str(meta.get("event", "")).strip(),
-            "rcmKey": str(meta.get("rcmKey", "")).strip(),
+            "specialEvents": special_events,
+            "event": str(primary_event.get("event", "")).strip(),
+            "rcmKey": str(primary_event.get("rcmKey", "")).strip(),
+            "captureMode": str(primary_event.get("captureMode", "")).strip() or ("separate" if str(primary_event.get("event", "")).strip() else ""),
         }
     normalized["isEventWeek"] = bool(normalized.get("event"))
     payload["rcmSnapshot"] = normalized
     return normalized
+
+
+def get_report_event_keys(snapshot: dict | None) -> set[str]:
+    if not isinstance(snapshot, dict):
+        return set()
+    keys: set[str] = set()
+    special_events = snapshot.get("specialEvents") if isinstance(snapshot.get("specialEvents"), list) else []
+    for entry in special_events:
+        if not isinstance(entry, dict):
+            continue
+        event_key = str(entry.get("rcmKey") or "").strip()
+        if event_key:
+            keys.add(event_key)
+    primary_key = str(snapshot.get("rcmKey") or "").strip()
+    if primary_key:
+        keys.add(primary_key)
+    return keys
+
+
+def get_visitor_attended_event_keys(visitor: dict, snapshot: dict | None) -> set[str]:
+    event_progress = visitor.get("eventProgress") if isinstance(visitor.get("eventProgress"), dict) else {}
+    attended_keys = {
+        str(key or "").strip()
+        for key, value in event_progress.items()
+        if str(key or "").strip() and bool(value)
+    }
+    if attended_keys:
+        return attended_keys
+    if not bool(visitor.get("eventAttended")):
+        return set()
+    return get_report_event_keys(snapshot)
 
 
 def extract_report_year(payload: dict) -> str:
@@ -2662,7 +2728,7 @@ def get_backend_rcm_meta(week_number: int) -> dict:
     for item in BACKEND_RCM_WEEKS:
         if item["week"] == week_number:
             return item
-    return {"week": week_number, "phase": "", "verb": "", "event": "", "rcmKey": ""}
+    return {"week": week_number, "phase": "", "verb": "", "event": "", "rcmKey": "", "captureMode": "", "specialEvents": []}
 
 
 def get_report_rcm_snapshot(payload: dict) -> dict:
@@ -3045,6 +3111,49 @@ def build_friend_tracking_payload(connection, *, cell_number: str = "", sector: 
                 (cell_number, cell_number, sector, sector, year, year, quarter, quarter),
     ).fetchall()
 
+    cycle_ids = [int(row["id"] or 0) for row in rows if int(row["id"] or 0) > 0]
+    steps_by_cycle_id: dict[int, list[dict]] = {}
+    if cycle_ids:
+        placeholders = ", ".join(["?"] * len(cycle_ids))
+        step_rows = connection.execute(
+            f"""
+            SELECT
+                friend_cycle_id,
+                report_id,
+                week_number,
+                report_date,
+                phase,
+                verb,
+                reach_attended,
+                sunday_attended,
+                event_attended,
+                converted,
+                late_registration,
+                note
+            FROM friend_cycle_steps
+            WHERE friend_cycle_id IN ({placeholders})
+            ORDER BY report_date ASC, week_number ASC, report_id ASC
+            """,
+            cycle_ids,
+        ).fetchall()
+        for step_row in step_rows:
+            cycle_id = int(step_row["friend_cycle_id"] or 0)
+            if cycle_id <= 0:
+                continue
+            steps_by_cycle_id.setdefault(cycle_id, []).append({
+                "reportId": int(step_row["report_id"] or 0),
+                "weekNumber": int(step_row["week_number"] or 0),
+                "reportDate": step_row["report_date"] or "",
+                "phase": step_row["phase"] or "",
+                "verb": step_row["verb"] or "",
+                "reachAttended": bool(int(step_row["reach_attended"] or 0)),
+                "sundayAttended": bool(int(step_row["sunday_attended"] or 0)),
+                "eventAttended": bool(int(step_row["event_attended"] or 0)),
+                "converted": bool(int(step_row["converted"] or 0)),
+                "lateRegistration": bool(int(step_row["late_registration"] or 0)),
+                "note": step_row["note"] or "",
+            })
+
     one_year_ago = (date.today() - timedelta(days=365)).isoformat()
     friends = []
     active_count = 0
@@ -3120,6 +3229,7 @@ def build_friend_tracking_payload(connection, *, cell_number: str = "", sector: 
             "sector": row["sector"] or "",
             "firstReportDate": first_report_date,
             "lastReportDate": row["last_report_date"] or "",
+            "steps": steps_by_cycle_id.get(int(row["id"] or 0), []),
         }
         if not is_won_friend:
             friends.append(item)
@@ -3227,15 +3337,16 @@ def build_friend_tracking_payload(connection, *, cell_number: str = "", sector: 
                     continue
                 if normalize_visitor_kind(visitor.get("kind")) != "amigo":
                     continue
-                if not bool(visitor.get("eventAttended")):
-                    continue
                 normalized_name = normalize_friend_name(visitor.get("name") or "")
                 if not normalized_name:
                     continue
+                attended_event_keys = get_visitor_attended_event_keys(visitor, report_snapshot)
+                if not attended_event_keys:
+                    continue
                 progress_key = f"{report_cell}::{normalized_name}"
-                if str(report_snapshot.get("rcmKey", "")).strip() == "levantate":
+                if "levantate" in attended_event_keys:
                     levantate_progress_keys.add(progress_key)
-                elif str(report_snapshot.get("rcmKey", "")).strip() == "restauracion":
+                if "restauracion" in attended_event_keys:
                     restauracion_progress_keys.add(progress_key)
 
         baptisms = payload.get("baptisms")
