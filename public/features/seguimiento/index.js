@@ -1128,6 +1128,218 @@ function buildDashboardAttendanceDetail(state, kind, detailKey) {
   return detail;
 }
 
+function buildPreviewAttendanceDetail(state, kind, detailKey) {
+  const previewReport = state?.previewReport || null;
+  if (!previewReport) return null;
+  const normalizedKey = normalizeDashboardAttendanceKey(detailKey);
+  if (!normalizedKey) return null;
+
+  const previewCell = getReportCellNumber(previewReport);
+  const previewYear = getReportYear(previewReport);
+  const previewQuarter = getReportQuarter(previewReport);
+  const baseReports = Array.isArray(state?.reports) ? state.reports : [];
+  const scopedReports = baseReports
+    .filter((report) => (
+      getReportCellNumber(report) === previewCell
+      && getReportYear(report) === previewYear
+      && getReportQuarter(report) === previewQuarter
+    ));
+  if (!scopedReports.some((report) => String(report?.id || '') === String(previewReport?.id || ''))) {
+    scopedReports.push(previewReport);
+  }
+  if (!scopedReports.length) return null;
+
+  const sortedReports = [...scopedReports].sort((left, right) => {
+    const leftKey = `${getReportYear(left)}-${String(getReportWeek(left) || '').padStart(2, '0')}`;
+    const rightKey = `${getReportYear(right)}-${String(getReportWeek(right) || '').padStart(2, '0')}`;
+    return leftKey.localeCompare(rightKey);
+  });
+  const isMember = String(kind || '').trim().toLowerCase() !== 'friend';
+
+  if (isMember) {
+    const detail = {
+      detailKey: normalizedKey,
+      kind: 'member',
+      name: '',
+      periodLabel: `Q${previewQuarter} ${previewYear} · Célula ${previewCell}`.trim(),
+      totalWeeks: 0,
+      totalFaltas: 0,
+      totalJust: 0,
+      totalP: 0,
+      totalA: 0,
+      totalC: 0,
+      appliedP: 0,
+      appliedA: 0,
+      appliedC: 0,
+      avgPct: 0,
+      rows: [],
+    };
+
+    const stageState = (statusValue, attended) => {
+      const normalizedStatus = String(statusValue || '').toLowerCase();
+      if (['absent', 'justified', 'present', 'service'].includes(normalizedStatus)) return normalizedStatus;
+      return attended ? 'present' : 'pending';
+    };
+    const isPresentLike = (value) => value === 'present' || value === 'service';
+    const isAbsentLike = (value) => value === 'absent' || value === 'justified';
+
+    sortedReports.forEach((report) => {
+      const formData = report?.formData || {};
+      const members = Array.isArray(formData.memberAttendance) ? formData.memberAttendance : [];
+      const entry = members.find((memberEntry) => {
+        const personId = String(memberEntry?.personId || '').trim();
+        return (personId && normalizeDashboardAttendanceKey(personId) === normalizedKey)
+          || normalizeDashboardAttendanceKey(memberEntry?.name) === normalizedKey;
+      });
+      if (!entry) return;
+
+      detail.name = detail.name || String(entry?.name || '').trim();
+      detail.totalWeeks += 1;
+      const planningApplied = hasAttendanceStage(formData, 'planificacion');
+      const reachApplied = hasAttendanceStage(formData, 'alcance');
+      const sundayApplied = hasAttendanceStage(formData, 'culto');
+      const planning = stageState(entry?.planningStatus, entry?.planningAttended);
+      const reach = stageState(entry?.reachStatus, entry?.reachAttended);
+      const sunday = stageState(entry?.sundayStatus, entry?.sundayAttended);
+
+      if (planningApplied) {
+        detail.appliedP += 1;
+        if (isPresentLike(planning)) detail.totalP += 1;
+      }
+      if (reachApplied) {
+        detail.appliedA += 1;
+        if (isPresentLike(reach)) detail.totalA += 1;
+      }
+      if (sundayApplied) {
+        detail.appliedC += 1;
+        if (isPresentLike(sunday)) detail.totalC += 1;
+      }
+
+      [planningApplied ? planning : null, reachApplied ? reach : null, sundayApplied ? sunday : null].forEach((stage) => {
+        if (!stage) return;
+        if (isAbsentLike(stage)) detail.totalFaltas += 1;
+        if (stage === 'justified') detail.totalJust += 1;
+      });
+
+      detail.rows.push({
+        weekNum: getReportWeek(report),
+        yearNum: getReportYear(report),
+        quarter: getReportQuarter(report),
+        dateLabel: getReportDate(report) ? formatAttendanceDetailDateLabel(getReportDate(report)) : '',
+        planning,
+        reach,
+        sunday,
+        planApp: planningApplied,
+        reachApp: reachApplied,
+        sundayApp: sundayApplied,
+      });
+    });
+
+    if (!detail.rows.length) return null;
+    const totalApplied = detail.appliedP + detail.appliedA + detail.appliedC;
+    detail.avgPct = totalApplied > 0 ? Math.round(((detail.totalP + detail.totalA + detail.totalC) / totalApplied) * 100) : 0;
+    return detail;
+  }
+
+  const detail = {
+    detailKey: normalizedKey,
+    kind: 'friend',
+    name: '',
+    kindLabel: 'Amigo',
+    periodLabel: `Q${previewQuarter} ${previewYear} · Célula ${previewCell}`.trim(),
+    totalVisits: 0,
+    totalReach: 0,
+    totalSunday: 0,
+    reachPct: 0,
+    sundayPct: 0,
+    overallPct: 0,
+    converted: false,
+    invitedBy: '',
+    lateRegistration: false,
+    rows: [],
+  };
+
+  sortedReports.forEach((report) => {
+    const formData = report?.formData || {};
+    const visitors = Array.isArray(formData.visitors) ? formData.visitors : [];
+    const entry = visitors.find((visitorEntry) => normalizeDashboardAttendanceKey(visitorEntry?.name) === normalizedKey);
+    if (!entry) return;
+
+    detail.name = detail.name || String(entry?.name || '').trim();
+    if (String(entry?.kind || 'amigo').toLowerCase() === 'visita') detail.kindLabel = 'Visita';
+    detail.totalVisits += 1;
+    if (entry?.reachAttended) detail.totalReach += 1;
+    if (entry?.sundayAttended) detail.totalSunday += 1;
+    if (entry?.converted) detail.converted = true;
+    if (entry?.lateRegistration) detail.lateRegistration = true;
+    if (!detail.invitedBy && entry?.invitedBy) detail.invitedBy = String(entry.invitedBy).trim();
+
+    detail.rows.push({
+      weekNum: getReportWeek(report),
+      yearNum: getReportYear(report),
+      quarter: getReportQuarter(report),
+      dateLabel: getReportDate(report) ? formatAttendanceDetailDateLabel(getReportDate(report)) : '',
+      reach: Boolean(entry?.reachAttended),
+      sunday: Boolean(entry?.sundayAttended),
+    });
+  });
+
+  if (!detail.rows.length) return null;
+  detail.reachPct = Math.round((detail.totalReach / detail.totalVisits) * 100);
+  detail.sundayPct = Math.round((detail.totalSunday / detail.totalVisits) * 100);
+  detail.overallPct = Math.round(((detail.totalReach + detail.totalSunday) / (detail.totalVisits * 2)) * 100);
+  return detail;
+}
+
+function resolveAttendanceDetailEntry(state, kind, detailKey) {
+  return buildDashboardAttendanceDetail(state, kind, detailKey)
+    || buildPreviewAttendanceDetail(state, kind, detailKey)
+    || buildPreviewSingleReportAttendanceDetail(state, kind, detailKey);
+}
+
+function buildPreviewSingleReportAttendanceDetail(state, kind, detailKey) {
+  const nextKind = String(kind || '').trim().toLowerCase() === 'friend' ? 'friend' : 'member';
+  if (nextKind !== 'friend') return null;
+  const previewReport = state?.previewReport || null;
+  if (!previewReport) return null;
+
+  const normalizedKey = normalizeDashboardAttendanceKey(detailKey);
+  if (!normalizedKey) return null;
+  const formData = previewReport?.formData || {};
+  const visitors = Array.isArray(formData.visitors) ? formData.visitors : [];
+  const visitor = visitors.find((entry) => normalizeDashboardAttendanceKey(entry?.name) === normalizedKey);
+  if (!visitor) return null;
+
+  const totalReach = visitor?.reachAttended ? 1 : 0;
+  const totalSunday = visitor?.sundayAttended ? 1 : 0;
+  return {
+    detailKey: normalizedKey,
+    kind: 'friend',
+    name: String(visitor?.name || '').trim(),
+    kindLabel: String(visitor?.kind || 'amigo').toLowerCase() === 'visita' ? 'Visita' : 'Amigo',
+    periodLabel: `Q${getReportQuarter(previewReport)} ${getReportYear(previewReport)} · Célula ${getReportCellNumber(previewReport)}`.trim(),
+    totalVisits: 1,
+    totalReach,
+    totalSunday,
+    reachPct: totalReach ? 100 : 0,
+    sundayPct: totalSunday ? 100 : 0,
+    overallPct: Math.round(((totalReach + totalSunday) / 2) * 100),
+    converted: Boolean(visitor?.converted),
+    invitedBy: String(visitor?.invitedBy || '').trim(),
+    lateRegistration: Boolean(visitor?.lateRegistration),
+    rows: [
+      {
+        weekNum: getReportWeek(previewReport),
+        yearNum: getReportYear(previewReport),
+        quarter: getReportQuarter(previewReport),
+        dateLabel: getReportDate(previewReport) ? formatAttendanceDetailDateLabel(getReportDate(previewReport)) : '',
+        reach: Boolean(visitor?.reachAttended),
+        sunday: Boolean(visitor?.sundayAttended),
+      },
+    ],
+  };
+}
+
 function getDashboardAlertsData(scopedReports, filteredReports, timeScope, selectedPeriod) {
   const reportsForStreaks = timeScope === 'week'
     ? (Array.isArray(scopedReports) ? scopedReports : []).filter((report) => getReportPeriodKey(report) <= String(selectedPeriod || ''))
@@ -1810,7 +2022,7 @@ export function createSeguimientoFeature(options = {}) {
     state.totals = getTotalsData(state);
     state.dashboardData = getDashboardData(state);
     if (state.attendanceDetailKey) {
-      state.attendanceDetailEntry = buildDashboardAttendanceDetail(state, state.attendanceDetailKind, state.attendanceDetailKey);
+      state.attendanceDetailEntry = resolveAttendanceDetailEntry(state, state.attendanceDetailKind, state.attendanceDetailKey);
       if (!state.attendanceDetailEntry) {
         state.attendanceDetailKind = '';
         state.attendanceDetailKey = '';
@@ -2027,7 +2239,7 @@ export function createSeguimientoFeature(options = {}) {
     const nextKind = String(kind || '').trim().toLowerCase() === 'friend' ? 'friend' : 'member';
     const nextKey = String(detailKey || '').trim();
     if (!nextKey) return;
-    const entry = buildDashboardAttendanceDetail(state, nextKind, nextKey);
+    const entry = resolveAttendanceDetailEntry(state, nextKind, nextKey);
     if (!entry) return;
     state.attendanceDetailKind = nextKind;
     state.attendanceDetailKey = nextKey;
@@ -2222,7 +2434,7 @@ export function createSeguimientoFeature(options = {}) {
   function render() {
     if (!currentRoot) return;
     if (state.attendanceDetailKey) {
-      state.attendanceDetailEntry = buildDashboardAttendanceDetail(state, state.attendanceDetailKind, state.attendanceDetailKey);
+      state.attendanceDetailEntry = resolveAttendanceDetailEntry(state, state.attendanceDetailKind, state.attendanceDetailKey);
       if (!state.attendanceDetailEntry) {
         state.isAttendanceDetailOpen = false;
         state.attendanceDetailKind = '';

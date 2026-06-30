@@ -1241,7 +1241,6 @@ function renderDashboardPanel(state) {
             : '<div class="quick-list-empty">Sin bautismos registrados.</div>'}
         </div>
       </section>
-      ${attendanceDetailEntry ? renderAttendanceDetailDialog(attendanceDetailEntry) : ''}
     </div>
   `;
 }
@@ -1637,12 +1636,19 @@ function renderPreviewVisitorsDialog(state) {
                 entry.converted ? 'Conversión' : '',
               ].filter(Boolean).join(' · ');
               const meta = [kind, entry.invitedBy ? `Invitó: ${entry.invitedBy}` : '', badges].filter(Boolean).join(' · ');
+              const detailKey = String(entry.name || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
               return `
                 <div class="preview-visitors-picker-row">
                   <div class="preview-visitors-picker-main">
                     <span class="preview-visitors-picker-name">${escapeHtml(entry.name || '')}</span>
                     <span class="preview-visitors-picker-meta">${escapeHtml(meta || 'Sin detalle adicional')}</span>
                   </div>
+                  <button type="button" class="preview-visitors-picker-action" data-action="open-dashboard-attendance-detail" data-person-kind="friend" data-person-key="${escapeHtml(detailKey)}"${detailKey ? '' : ' disabled'}>Ver detalle</button>
                 </div>`;
             }).join('')}
           </div>`
@@ -1770,6 +1776,7 @@ export function renderSeguimientoShell(state) {
       </section>
     </section>
       ` : ''}
+      ${state.attendanceDetailEntry ? renderAttendanceDetailDialog(state.attendanceDetailEntry) : ''}
       ${state.previewReport ? renderReportPreviewDialog(state.previewReport, { mode: state.previewMode }) : ''}
       ${state.previewReport ? renderPreviewVisitorsDialog(state) : ''}
     </section>
