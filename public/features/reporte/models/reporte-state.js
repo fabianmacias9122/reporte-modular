@@ -1,5 +1,6 @@
 import { getPrimaryRcmSpecialEvent, getRcmTotalWeeks, getRcmWeekInfo, normalizeRcmCaptureMode, normalizeRcmSpecialEvents } from '../../../core/rcm/index.js';
 import { createEmptyCatalogs, findCellByNumber, getCellKids, getCellMembers } from '../../catalogos/models/catalogs-state.js';
+import { getCurrentLang, t } from '../../../i18n.js';
 
 function getPreferredSnapshotEvent(snapshot) {
   const specialEvents = normalizeRcmSpecialEvents(snapshot?.specialEvents, snapshot);
@@ -186,13 +187,13 @@ export function getBaptismCaptureStatus(dateValue = '') {
   if (!parts) {
     return {
       isAllowed: false,
-      message: 'Selecciona la fecha del reporte para habilitar el cierre de bautismos.',
+      message: t('reporte.baptisms.captureDateRequired'),
     };
   }
   if (![4, 8, 12].includes(parts.month)) {
     return {
       isAllowed: false,
-      message: 'Los bautismos solo se capturan en el cierre del cuatrimestre: abril, agosto y diciembre.',
+      message: t('reporte.baptisms.captureQuarterOnly'),
     };
   }
   const reportDate = new Date(parts.year, parts.month - 1, parts.day);
@@ -201,12 +202,12 @@ export function getBaptismCaptureStatus(dateValue = '') {
   if (reportDate < closingWeekStart || reportDate.getMonth() !== lastDayOfMonth.getMonth()) {
     return {
       isAllowed: false,
-      message: 'Los bautismos se registran solo en la ultima semana del cuatrimestre.',
+      message: t('reporte.baptisms.captureLastWeekOnly'),
     };
   }
   return {
     isAllowed: true,
-    message: `Cierre habilitado para ${lastDayOfMonth.toLocaleString('es-MX', { month: 'long' })}.`,
+    message: t('reporte.baptisms.captureEnabled', { month: lastDayOfMonth.toLocaleString(getCurrentLang() === 'en' ? 'en-US' : 'es-MX', { month: 'long' }) }),
   };
 }
 
@@ -236,7 +237,7 @@ export function normalizeBaptisms(savedBaptisms = []) {
 export function getBaptismRegistrationMessage(captureStatus) {
   return captureStatus.isAllowed
     ? captureStatus.message
-    : 'Fuera del cierre cuatrimestral. Puedes registrarlo para agregarlo como miembro; el conteo anual solo se actualiza en la ultima semana del cuatrimestre.';
+    : t('reporte.baptisms.outsideClosingMessage');
 }
 
 export function createBaptismQuickForm(reportDate = '') {
@@ -465,21 +466,21 @@ export function getVisitorProcessAvailability(form, settings) {
 
 export function getVisitorProcessOptions(form, settings, kind = 'amigo') {
   if (normalizeVisitorKind(kind) !== 'amigo') {
-    return [{ value: 'none', label: 'Sin proceso' }];
+    return [{ value: 'none', label: t('reporte.visitors.process.none') }];
   }
   const availability = getVisitorProcessAvailability(form, settings);
   return [
-    { value: 'none', label: 'Sin proceso' },
-    { value: 'noted', label: 'Al proceso', enabled: availability.allowNoted },
-    { value: 'late', label: 'Tardio', enabled: availability.allowLate },
+    { value: 'none', label: t('reporte.visitors.process.none') },
+    { value: 'noted', label: t('reporte.visitors.process.noted'), enabled: availability.allowNoted },
+    { value: 'late', label: t('reporte.visitors.process.late'), enabled: availability.allowLate },
   ].filter((option) => option.value === 'none' || option.enabled);
 }
 
 export function getVisitorProcessStatusLabel(value) {
   const normalized = normalizeVisitorProcessEntry(value);
-  if (normalized === 'late') return 'Proceso tardio';
-  if (normalized === 'noted') return 'En proceso';
-  return 'Sin proceso';
+  if (normalized === 'late') return t('reporte.visitors.process.statusLate');
+  if (normalized === 'noted') return t('reporte.visitors.process.statusNoted');
+  return t('reporte.visitors.process.none');
 }
 
 export function buildVisitorHistory(reports, cellNumber = '', currentReportId = '') {

@@ -9,6 +9,7 @@ import {
   setPassword,
   setStoredSession,
 } from './index.js';
+import { t } from '../../i18n.js';
 
 function getCellForPerson(catalogs, personId) {
   const safePersonId = String(personId || '').trim();
@@ -97,7 +98,7 @@ export function createLoginExperience(options = {}) {
     helpText.hidden = !message;
   }
 
-  function setBusy(isBusy, buttonText = 'Entrar →') {
+  function setBusy(isBusy, buttonText = t('login.enter')) {
     if (loginCard) {
       if (isBusy) loginCard.setAttribute('aria-busy', 'true');
       else loginCard.removeAttribute('aria-busy');
@@ -273,7 +274,7 @@ export function createLoginExperience(options = {}) {
       }
       pendingResolver = null;
     } catch (error) {
-      setBusy(false, 'Entrar →');
+      setBusy(false, t('login.enter'));
       setLoginError(error instanceof Error ? error.message : 'No se pudo iniciar sesión.');
     }
   }
@@ -358,7 +359,7 @@ export function createLoginExperience(options = {}) {
 
   function hide() {
     if (overlay) overlay.classList.add('is-hidden');
-    setBusy(false, 'Entrar →');
+    setBusy(false, t('login.enter'));
   }
 
   async function resolveSession() {
@@ -399,7 +400,7 @@ export function createLoginExperience(options = {}) {
     setVisibility(passwordConfirmField, false);
     setLoginHelp('');
     setLoginError('');
-    setBusy(false, 'Entrar →');
+    setBusy(false, t('login.enter'));
     show();
   }
 

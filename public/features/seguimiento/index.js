@@ -5,6 +5,7 @@ import { getRcmWeekInfo, getRcmWeeksDefaultClone } from '../../core/rcm/index.js
 import { fetchCatalogs } from '../catalogos/data/catalogos.repository.js';
 import { getCellMembers } from '../catalogos/models/catalogs-state.js';
 import { fetchSeguimientoReport, fetchSeguimientoReports, fetchFriendTracking } from './data/seguimiento.repository.js';
+import { t } from '../../i18n.js';
 
 const TRACKING_TARGET_WEEKS = (() => {
   const targetWeeks = {
@@ -387,10 +388,10 @@ function canSeeSupervisorTab(user) {
 
 function getSeguimientoTabs(user) {
   return [
-    canSeeSeguimientoTab(user) ? { key: 'seguimiento', label: 'Seguimiento' } : null,
-    canSeeSupervisorTab(user) ? { key: 'supervisor', label: 'Consolidado semanal' } : null,
-    { key: 'dashboard', label: 'Dashboard' },
-    { key: 'goals', label: 'Metas' },
+    canSeeSeguimientoTab(user) ? { key: 'seguimiento', label: t('seguimiento.tab.seguimiento') } : null,
+    canSeeSupervisorTab(user) ? { key: 'supervisor', label: t('seguimiento.tab.supervisor') } : null,
+    { key: 'dashboard', label: t('seguimiento.tab.dashboard') },
+    { key: 'goals', label: t('seguimiento.tab.goals') },
   ].filter(Boolean);
 }
 
@@ -402,9 +403,9 @@ function buildScopeTabs(user) {
   const tabs = [];
   const myCell = String(user?.assignedCellNumber || '').trim();
   const mySector = String(user?.supervisedSector || '').trim();
-  if (myCell) tabs.push({ key: 'cell', label: 'Mi célula', sublabel: `Célula ${myCell}` });
-  if (mySector) tabs.push({ key: 'sector', label: 'Mi sector', sublabel: `Sector ${mySector}` });
-  if (canUserViewAllCells(user)) tabs.push({ key: 'all', label: 'Todas las células', sublabel: 'todos los sectores' });
+  if (myCell) tabs.push({ key: 'cell', label: t('seguimiento.scope.myCell'), sublabel: `Célula ${myCell}` });
+  if (mySector) tabs.push({ key: 'sector', label: t('seguimiento.scope.mySector'), sublabel: `Sector ${mySector}` });
+  if (canUserViewAllCells(user)) tabs.push({ key: 'all', label: t('seguimiento.scope.allCells'), sublabel: t('seguimiento.scope.allSectors') });
   return tabs;
 }
 
@@ -2556,6 +2557,10 @@ export function createSeguimientoFeature(options = {}) {
       if (state.activeTab === 'goals') {
         loadMetas();
       }
+    },
+    onLanguageChange() {
+      syncDerivedState();
+      render();
     },
     unmount(root) {
       currentRoot = null;

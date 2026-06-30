@@ -3,8 +3,9 @@ import { createLoginExperience } from '../auth/login.js';
 import { applyRcmWeeksConfig, resetRcmWeeks } from '../rcm/index.js';
 import { fetchReports } from '../../features/reporte/data/reporte.repository.js';
 import { getQuarterWeekNumber } from '../../features/reporte/models/reporte-state.js';
+import { applyStaticTranslations, getCurrentLang, setLang, t } from '../../i18n.js';
 
-const FEATURE_MODULE_VERSION = 'v=20260622-seguimiento-attendance-detail-5';
+const FEATURE_MODULE_VERSION = 'v=20260630-i18n-config-hotfix-1';
 
 const appState = {
   rootSelector: '#app-root',
@@ -20,13 +21,13 @@ const appState = {
 let globalGraceBannerTimer = null;
 
 const FEATURE_LABELS = {
-  reporte: 'Reporte',
-  seguimiento: 'Seguimiento',
-  catalogos: 'Catálogos',
-  configuracion: 'Configuración',
+  reporte: 'feature.reporte',
+  seguimiento: 'feature.seguimiento',
+  catalogos: 'feature.catalogos',
+  configuracion: 'feature.configuracion',
 };
 
-export function showSplash(message = 'Despertando el servidor, un momento.') {
+export function showSplash(message = t('splash.waking')) {
   const splash = document.querySelector('#app-splash');
   const subtitle = document.querySelector('#app-splash-sub');
   if (subtitle) {
@@ -144,7 +145,7 @@ function syncGlobalGraceBanner(root) {
     return;
   }
 
-  bannerText.innerHTML = `<strong>¿Ya enviaste tu reporte de la semana ${info.week}?</strong> Tienes <strong>${formatGraceCountdown(info.msLeft)}</strong> de prórroga antes de que cierre el periodo.`;
+  bannerText.innerHTML = `<strong>${t('shell.grace.banner', { week: info.week, countdown: formatGraceCountdown(info.msLeft) })}</strong>`;
   banner.hidden = false;
   if (!globalGraceBannerTimer) {
     globalGraceBannerTimer = setInterval(() => syncGlobalGraceBanner(root), 1000);
@@ -177,8 +178,8 @@ function updateTopbarSession() {
   const settingsButton = document.querySelector('#show-settings-view');
   const isLoggedIn = Boolean(currentUser && currentUser.name);
 
-  if (healthStatus) healthStatus.textContent = 'Revisando...';
-  if (mobileStatusText) mobileStatusText.textContent = 'Revisando...';
+  if (healthStatus) healthStatus.textContent = t('shell.status.checking');
+  if (mobileStatusText) mobileStatusText.textContent = t('shell.status.checking');
   if (healthStatusDot) healthStatusDot.dataset.ok = 'true';
   if (mobileStatusDot) mobileStatusDot.dataset.ok = 'true';
   if (userChip) userChip.classList.toggle('is-hidden', !isLoggedIn);
@@ -203,7 +204,7 @@ function updateTopbarSession() {
 function updateShellNavigation() {
   const routeLabel = document.querySelector('#topbar-route-label');
   if (routeLabel) {
-    routeLabel.textContent = FEATURE_LABELS[appState.activeFeatureKey] || 'Reporte';
+    routeLabel.textContent = t(FEATURE_LABELS[appState.activeFeatureKey] || 'feature.reporte');
   }
 
   document.querySelectorAll('[data-feature-key]').forEach((button) => {
@@ -212,6 +213,49 @@ function updateShellNavigation() {
   });
 
   updateTopbarSession();
+}
+
+function syncLanguageButtons() {
+  const activeLang = getCurrentLang();
+  document.querySelectorAll('#lang-switcher .lang-btn').forEach((button) => {
+    if (!(button instanceof HTMLElement)) return;
+    const isActive = String(button.dataset.lang || '') === activeLang;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function setupGlobalLanguageSwitcher(root) {
+  const langSwitcher = document.querySelector('#lang-switcher');
+  if (!(langSwitcher instanceof HTMLElement)) return;
+
+  syncLanguageButtons();
+  applyStaticTranslations(document);
+
+  langSwitcher.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('.lang-btn[data-lang]') : null;
+    if (!(button instanceof HTMLElement)) return;
+    const requestedLang = String(button.dataset.lang || '').trim();
+    if (!requestedLang) return;
+    const previousLang = getCurrentLang();
+    const nextLang = setLang(requestedLang);
+    if (nextLang === previousLang) {
+      syncLanguageButtons();
+      return;
+    }
+    syncLanguageButtons();
+    applyStaticTranslations(document);
+    if (appState.activeFeature && typeof appState.activeFeature.onLanguageChange === 'function') {
+      appState.activeFeature.onLanguageChange(nextLang);
+    } else if (root) {
+      updateShellNavigation();
+    }
+  });
+
+  document.addEventListener('rc:langchange', () => {
+    syncLanguageButtons();
+    applyStaticTranslations(document);
+  });
 }
 
 async function loadFeatureModules() {
@@ -250,14 +294,14 @@ async function activateFeature(root, nextKey, context = null) {
 async function mountActiveFeature(root) {
   if (!root) return;
 
-  showSplash(appState.currentUser ? 'Cargando tu sesión…' : 'Despertando el servidor, un momento.');
+  showSplash(appState.currentUser ? t('splash.loadingSession') : t('splash.waking'));
   let bootStage = 'inicio';
   try {
     bootStage = 'navegacion';
     updateShellNavigation();
 
     bootStage = 'modulos';
-    showSplash('Cargando módulos...');
+    showSplash(t('splash.loadingModules'));
     const {
       createCatalogosFeature,
       createConfiguracionFeature,
@@ -267,7 +311,7 @@ async function mountActiveFeature(root) {
     } = await loadFeatureModules();
 
     bootStage = 'datos';
-    showSplash('Cargando configuración y reportes...');
+    showSplash(t('splash.loadingData'));
     const [settings, reports] = await Promise.all([
       fetchSettings().catch(() => ({})),
       fetchReports().catch(() => []),
@@ -296,7 +340,7 @@ async function mountActiveFeature(root) {
     };
 
     bootStage = `vista:${appState.activeFeatureKey}`;
-    showSplash('Renderizando vista principal...');
+    showSplash(t('splash.renderingMain'));
     const nextFeature = features[appState.activeFeatureKey];
     if (!nextFeature || typeof nextFeature.mount !== 'function') {
       throw new Error(`Feature inválida para ${appState.activeFeatureKey}`);
@@ -321,6 +365,7 @@ export async function bootstrapApp(options = {}) {
   const globalGraceBannerCapture = document.querySelector('#global-grace-banner-capture');
 
   applyPreviewFlags();
+  setupGlobalLanguageSwitcher(root);
   const loginExperience = createLoginExperience();
   loginExperience.init();
   appState.currentUser = restoreStoredSession();

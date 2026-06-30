@@ -40,6 +40,7 @@ export function createConfiguracionFeature(options = {}) {
   };
 
   let currentRoot = null;
+  let langChangeHandler = null;
   const statusTimeouts = new Map();
 
   function syncLanguageButtons() {
@@ -48,6 +49,16 @@ export function createConfiguracionFeature(options = {}) {
       if (!(button instanceof HTMLElement)) return;
       button.classList.toggle('is-active', String(button.dataset.lang || '') === state.currentLang);
     });
+  }
+
+  function handleExternalLanguageChange() {
+    const nextLang = getCurrentLang();
+    if (nextLang === state.currentLang) {
+      syncLanguageButtons();
+      return;
+    }
+    state.currentLang = nextLang;
+    render();
   }
 
   async function load() {
@@ -408,10 +419,21 @@ export function createConfiguracionFeature(options = {}) {
   return {
     async mount(root) {
       currentRoot = root || null;
+      if (!langChangeHandler) {
+        langChangeHandler = () => handleExternalLanguageChange();
+        document.addEventListener('rc:langchange', langChangeHandler);
+      }
       await load();
       render();
     },
+    onLanguageChange() {
+      handleExternalLanguageChange();
+    },
     unmount(root) {
+      if (langChangeHandler) {
+        document.removeEventListener('rc:langchange', langChangeHandler);
+        langChangeHandler = null;
+      }
       statusTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
       statusTimeouts.clear();
       currentRoot = null;

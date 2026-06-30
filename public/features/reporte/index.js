@@ -61,7 +61,8 @@ import {
   updateVisitor,
   updateKid,
 } from './models/reporte-state.js?v=20260619-reporte-state-1';
-import { renderReporteShell } from './views/reporte-shell.js?v=20260622-preview-events-fix-1';
+import { renderReporteShell } from './views/reporte-shell.js?v=20260630-i18n-live-switch-2';
+import { t } from '../../i18n.js';
 
 export function createReporteFeature(options = {}) {
   const state = createReporteState(normalizeReporteContext(options.initialContext));
@@ -2316,7 +2317,7 @@ export function createReporteFeature(options = {}) {
     state.form = applyCellToReportForm(state.form, state.catalogs);
     state.canEditCurrentReport = canEditCurrentReport();
     if (!state.canEditCurrentReport) {
-      state.message = 'Solo el líder de esta célula puede guardar o finalizar este reporte.';
+      state.message = t('reporte.readonly.saveTitle');
       state.isError = true;
       render();
       return;
@@ -2449,7 +2450,7 @@ export function createReporteFeature(options = {}) {
     state.form = applyCellToReportForm(state.form, state.catalogs);
     state.canEditCurrentReport = canEditCurrentReport();
     if (!state.canEditCurrentReport) {
-      state.message = 'Solo el líder de esta célula puede guardar o finalizar este reporte.';
+      state.message = t('reporte.readonly.saveTitle');
       state.isError = true;
       render();
       return;
@@ -3001,6 +3002,11 @@ export function createReporteFeature(options = {}) {
       }
       render({
         scrollStageTab: state.activeStage !== 'encabezado',
+        preserveScroll: true,
+      });
+    },
+    onLanguageChange() {
+      render({
         preserveScroll: true,
       });
     },

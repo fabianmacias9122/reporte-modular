@@ -1,6 +1,7 @@
 import { getRcmWeekInfo } from '../../../core/rcm/index.js';
 import { buildHistoryPreviewHtml } from '../../reporte/views/reporte-shell.js?v=20260622-preview-events-fix-1';
 import { formatSeguimientoDate } from '../models/seguimiento-state.js';
+import { t } from '../../../i18n.js';
 
 function escapeHtml(value) {
   return String(value)
@@ -510,7 +511,7 @@ function renderWeekContext(state) {
         </div>
         <div class="rcs-divider"></div>
         <div class="rcs-col">
-          <span class="rcs-label">${context.isPreviousWeek ? 'Reportaron la semana anterior' : 'Reportaron esta semana'}</span>
+          <span class="rcs-label">${context.isPreviousWeek ? t('seguimiento.week.reportedPrevious') : t('seguimiento.week.reportedCurrent')}</span>
           <div class="rcs-chips" id="rcs-activity">
             ${context.weeklyReports.length
               ? context.weeklyReports.map((report) => {
@@ -534,15 +535,15 @@ function renderTotalsPanel(state) {
       <div class="panel-head">
         <div>
           <p class="eyebrow" id="seg-totals-eyebrow">${escapeHtml(state.weekContext?.isPreviousWeek ? state.weekContext.previousVerb : state.weekContext?.currentVerb || 'Semana')}</p>
-          <h2>Totales de asistencia</h2>
+          <h2>${escapeHtml(t('seguimiento.totals.title'))}</h2>
         </div>
         <div class="seg-totals-scope-tabs">
           ${totals.availableScopes.map((scope) => `
-            <button type="button" class="seg-totals-tab${scope === totals.selectedScope ? ' is-active' : ''}" data-action="change-totals-scope" data-scope="${escapeHtml(scope)}">${escapeHtml(scope === 'total' ? 'Total' : scope === 'sector' ? 'Por sector' : 'Por célula')}</button>
+            <button type="button" class="seg-totals-tab${scope === totals.selectedScope ? ' is-active' : ''}" data-action="change-totals-scope" data-scope="${escapeHtml(scope)}">${escapeHtml(scope === 'total' ? t('seguimiento.totals.scope.total') : scope === 'sector' ? t('seguimiento.totals.scope.sector') : t('seguimiento.totals.scope.cell'))}</button>
           `).join('')}
-          <label class="seg-totals-toggle" title="Mostrar montos de ofrenda">
+          <label class="seg-totals-toggle" title="${escapeHtml(t('seguimiento.totals.showOffering'))}">
             <input type="checkbox" id="seg-totals-show-offering"${state.showOffering ? ' checked' : ''}>
-            Mostrar ofrenda
+            ${escapeHtml(t('seguimiento.totals.showOffering'))}
           </label>
         </div>
       </div>
