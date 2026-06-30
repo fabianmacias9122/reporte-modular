@@ -1638,6 +1638,48 @@ function renderSundaySection(members, visitors, kids, data) {
   `;
 }
 
+function renderPreviewVisitorsDialog(state) {
+  const previewReport = state.previewReport;
+  const visitors = (Array.isArray(previewReport?.formData?.visitors) ? previewReport.formData.visitors : [])
+    .filter((entry) => String(entry?.name || '').trim());
+  return `
+    <dialog id="preview-visitors-dialog" class="app-dialog">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">Seguimiento</p>
+          <h3 id="preview-visitors-dialog-title">Detalle de amigos (${visitors.length})</h3>
+        </div>
+        <button type="button" class="btn-icon-round" data-action="close-preview-visitors" aria-label="Cerrar">✕</button>
+      </div>
+      <div id="preview-visitors-dialog-body" class="dialog-body">
+        ${visitors.length ? `
+          <div class="preview-visitors-picker-list">
+            ${visitors.map((entry) => {
+              const kind = (entry.kind || 'amigo') === 'visita' ? 'Restauración' : 'Amigo';
+              const badges = [
+                entry.reachAttended ? 'Alcance' : '',
+                entry.sundayAttended ? 'Culto' : '',
+                entry.converted ? 'Conversión' : '',
+              ].filter(Boolean).join(' · ');
+              const meta = [kind, entry.invitedBy ? `Invitó: ${entry.invitedBy}` : '', badges].filter(Boolean).join(' · ');
+              return `
+                <div class="preview-visitors-picker-row">
+                  <div class="preview-visitors-picker-main">
+                    <span class="preview-visitors-picker-name">${escapeHtml(entry.name || '')}</span>
+                    <span class="preview-visitors-picker-meta">${escapeHtml(meta || 'Sin detalle adicional')}</span>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>`
+          : '<p class="empty-state">No hay amigos capturados en este reporte.</p>'}
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="btn btn-ghost" data-action="close-preview-visitors">Cerrar</button>
+      </div>
+    </dialog>
+  `;
+}
+
 function renderReportPreviewDialog(report, options = {}) {
   const data = report?.formData || {};
   const weekInfo = getRcmWeekInfo(data.week || report?.week || '');
@@ -1754,6 +1796,7 @@ export function renderSeguimientoShell(state) {
     </section>
       ` : ''}
       ${state.previewReport ? renderReportPreviewDialog(state.previewReport, { mode: state.previewMode }) : ''}
+      ${state.previewReport ? renderPreviewVisitorsDialog(state) : ''}
     </section>
   `;
 }
