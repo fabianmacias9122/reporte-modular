@@ -373,6 +373,10 @@ export function attachSeguimientoController(root, actions) {
         await currentActions.getPreviewSharePayload?.();
         return;
       }
+      if (action === 'open-supervisor-report') {
+        await currentActions.openSupervisorReport(String(button.dataset.id || ''));
+        return;
+      }
       if (action === 'open-control-detail') {
         currentActions.openControlDetail(String(button.dataset.controlKey || ''));
         return;
