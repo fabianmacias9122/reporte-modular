@@ -2245,6 +2245,7 @@ export function createSeguimientoFeature(options = {}) {
     state.attendanceDetailKey = nextKey;
     state.attendanceDetailEntry = entry;
     state.isAttendanceDetailOpen = true;
+    state.previewVisitorsOpen = false;
     render();
   }
 
@@ -2339,6 +2340,10 @@ export function createSeguimientoFeature(options = {}) {
   }
 
   function openPreviewVisitors() {
+    state.isAttendanceDetailOpen = false;
+    state.attendanceDetailKind = '';
+    state.attendanceDetailKey = '';
+    state.attendanceDetailEntry = null;
     state.previewVisitorsOpen = true;
     render();
   }
