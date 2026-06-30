@@ -1992,7 +1992,7 @@ export function createSeguimientoFeature(options = {}) {
     summary: selectSeguimientoSummary([]),
     activeTab: getDefaultSeguimientoTab(options.currentUser || null),
     weekOffset: -1,
-    totalsScope: 'cell',
+    totalsScope: 'total',
     showOffering: loadShowOffering(),
     weekContext: null,
     totals: null,
