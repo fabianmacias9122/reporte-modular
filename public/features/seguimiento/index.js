@@ -1096,20 +1096,30 @@ function buildDashboardAttendanceDetail(state, kind, detailKey) {
     rows: [],
   };
 
-  sortedReports.forEach((report) => {
+  const firstSeenIndex = sortedReports.findIndex((report) => {
     const formData = report?.formData || {};
     const visitors = Array.isArray(formData.visitors) ? formData.visitors : [];
-    const entry = visitors.find((visitorEntry) => normalizeDashboardAttendanceKey(visitorEntry?.name) === normalizedKey);
-    if (!entry) return;
+    return visitors.some((visitorEntry) => normalizeDashboardAttendanceKey(visitorEntry?.name) === normalizedKey);
+  });
 
-    detail.name = detail.name || String(entry?.name || '').trim();
-    if (String(entry?.kind || 'amigo').toLowerCase() === 'visita') detail.kindLabel = 'Visita';
+  if (firstSeenIndex < 0) return null;
+
+  sortedReports.slice(firstSeenIndex).forEach((report) => {
+    const formData = report?.formData || {};
+    const visitors = Array.isArray(formData.visitors) ? formData.visitors : [];
+    const entry = visitors.find((visitorEntry) => normalizeDashboardAttendanceKey(visitorEntry?.name) === normalizedKey) || null;
+
+    if (entry) {
+      detail.name = detail.name || String(entry?.name || '').trim();
+      if (String(entry?.kind || 'amigo').toLowerCase() === 'visita') detail.kindLabel = 'Visita';
+      if (entry?.converted) detail.converted = true;
+      if (entry?.lateRegistration) detail.lateRegistration = true;
+      if (!detail.invitedBy && entry?.invitedBy) detail.invitedBy = String(entry.invitedBy).trim();
+    }
+
     detail.totalVisits += 1;
     if (entry?.reachAttended) detail.totalReach += 1;
     if (entry?.sundayAttended) detail.totalSunday += 1;
-    if (entry?.converted) detail.converted = true;
-    if (entry?.lateRegistration) detail.lateRegistration = true;
-    if (!detail.invitedBy && entry?.invitedBy) detail.invitedBy = String(entry.invitedBy).trim();
 
     detail.rows.push({
       weekNum: getReportWeek(report),
@@ -1118,6 +1128,7 @@ function buildDashboardAttendanceDetail(state, kind, detailKey) {
       dateLabel: getReportDate(report) ? formatAttendanceDetailDateLabel(getReportDate(report)) : '',
       reach: Boolean(entry?.reachAttended),
       sunday: Boolean(entry?.sundayAttended),
+      missingInReport: !entry,
     });
   });
 
@@ -1259,20 +1270,30 @@ function buildPreviewAttendanceDetail(state, kind, detailKey) {
     rows: [],
   };
 
-  sortedReports.forEach((report) => {
+  const firstSeenIndex = sortedReports.findIndex((report) => {
     const formData = report?.formData || {};
     const visitors = Array.isArray(formData.visitors) ? formData.visitors : [];
-    const entry = visitors.find((visitorEntry) => normalizeDashboardAttendanceKey(visitorEntry?.name) === normalizedKey);
-    if (!entry) return;
+    return visitors.some((visitorEntry) => normalizeDashboardAttendanceKey(visitorEntry?.name) === normalizedKey);
+  });
 
-    detail.name = detail.name || String(entry?.name || '').trim();
-    if (String(entry?.kind || 'amigo').toLowerCase() === 'visita') detail.kindLabel = 'Visita';
+  if (firstSeenIndex < 0) return null;
+
+  sortedReports.slice(firstSeenIndex).forEach((report) => {
+    const formData = report?.formData || {};
+    const visitors = Array.isArray(formData.visitors) ? formData.visitors : [];
+    const entry = visitors.find((visitorEntry) => normalizeDashboardAttendanceKey(visitorEntry?.name) === normalizedKey) || null;
+
+    if (entry) {
+      detail.name = detail.name || String(entry?.name || '').trim();
+      if (String(entry?.kind || 'amigo').toLowerCase() === 'visita') detail.kindLabel = 'Visita';
+      if (entry?.converted) detail.converted = true;
+      if (entry?.lateRegistration) detail.lateRegistration = true;
+      if (!detail.invitedBy && entry?.invitedBy) detail.invitedBy = String(entry.invitedBy).trim();
+    }
+
     detail.totalVisits += 1;
     if (entry?.reachAttended) detail.totalReach += 1;
     if (entry?.sundayAttended) detail.totalSunday += 1;
-    if (entry?.converted) detail.converted = true;
-    if (entry?.lateRegistration) detail.lateRegistration = true;
-    if (!detail.invitedBy && entry?.invitedBy) detail.invitedBy = String(entry.invitedBy).trim();
 
     detail.rows.push({
       weekNum: getReportWeek(report),
@@ -1281,6 +1302,7 @@ function buildPreviewAttendanceDetail(state, kind, detailKey) {
       dateLabel: getReportDate(report) ? formatAttendanceDetailDateLabel(getReportDate(report)) : '',
       reach: Boolean(entry?.reachAttended),
       sunday: Boolean(entry?.sundayAttended),
+      missingInReport: !entry,
     });
   });
 

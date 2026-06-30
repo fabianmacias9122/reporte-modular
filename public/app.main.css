@@ -6416,6 +6416,24 @@ details.ev-section:not([open]) > .ev-body { display: none; }
 .preview-visitors-picker-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .preview-visitors-picker-name { font-weight: 700; color: var(--ink); }
 .preview-visitors-picker-meta { font-size: 0.78rem; color: var(--muted); }
+.preview-visitors-picker-action {
+  min-width: 128px;
+  height: 44px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  background: #2f3fb9;
+  color: #fff;
+  cursor: pointer;
+}
+.preview-visitors-picker-action:hover { filter: brightness(0.96); }
+.preview-visitors-picker-action:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Event metrics grid (dashboard panel) ────────────────────── */
 .metrics-events-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
@@ -6991,6 +7009,11 @@ body.force-mobile-preview #kids-table-body td.checkbox-cell input[type="checkbox
     align-items: flex-start;
     gap: 8px;
     padding: 8px 10px;
+  }
+  .preview-visitors-picker-action {
+    min-width: 120px;
+    height: 40px;
+    align-self: flex-end;
   }
 }
 

@@ -273,13 +273,15 @@ function renderAttendanceDetailDialog(entry) {
         const both = row.reach && row.sunday;
         const none = !row.reach && !row.sunday;
         const rowClass = none ? ' mdl-row-falta' : '';
-        const statusBadge = both
-          ? '<span class="mdl-status-badge mdl-status-ok">Ambos eventos</span>'
-          : !row.reach && row.sunday
-            ? '<span class="mdl-status-badge mdl-status-partial">Solo culto</span>'
-            : row.reach && !row.sunday
-              ? '<span class="mdl-status-badge mdl-status-partial">Solo alcance</span>'
-              : '<span class="mdl-status-badge mdl-status-absent">No asistió</span>';
+        const statusBadge = row.missingInReport
+          ? '<span class="mdl-status-badge mdl-status-absent">No fue (sin registro)</span>'
+          : both
+            ? '<span class="mdl-status-badge mdl-status-ok">Ambos eventos</span>'
+            : !row.reach && row.sunday
+              ? '<span class="mdl-status-badge mdl-status-partial">Solo culto</span>'
+              : row.reach && !row.sunday
+                ? '<span class="mdl-status-badge mdl-status-partial">Solo alcance</span>'
+                : '<span class="mdl-status-badge mdl-status-absent">No asistió</span>';
         return `<tr class="${rowClass}"><td class="mdl-week">${escapeHtml(String(row.weekNum || ''))}</td><td class="mdl-date">${escapeHtml(row.dateLabel || '')}</td><td class="mdl-ev">${visitorEventDot(row.reach, 'Alcance')}</td><td class="mdl-ev">${visitorEventDot(row.sunday, 'Culto')}</td><td>${statusBadge}</td></tr>`;
       }).join('')}</tbody></table></details>`;
     }).join('');
