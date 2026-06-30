@@ -1774,6 +1774,7 @@ export function createSeguimientoFeature(options = {}) {
     previewReport: null,
     previewMode: 'default',
     isPreviewOpen: false,
+    previewVisitorsOpen: false,
     supervisorName: '',
     supervisorWeek: '',
     supervisorData: null,
@@ -2125,6 +2126,16 @@ export function createSeguimientoFeature(options = {}) {
     render();
   }
 
+  function openPreviewVisitors() {
+    state.previewVisitorsOpen = true;
+    render();
+  }
+
+  function closePreviewVisitors() {
+    state.previewVisitorsOpen = false;
+    render();
+  }
+
   async function submitApprovalAction(action, sector, week) {
     const nextAction = String(action || '').trim();
     const nextSector = String(sector || '').trim();
@@ -2188,6 +2199,7 @@ export function createSeguimientoFeature(options = {}) {
     state.isPreviewOpen = false;
     state.previewReport = null;
     state.previewMode = 'default';
+    state.previewVisitorsOpen = false;
     render();
   }
 
@@ -2245,6 +2257,8 @@ export function createSeguimientoFeature(options = {}) {
       selectCardDetail,
       selectReportDetail,
       openSupervisorReport,
+      openPreviewVisitors,
+      closePreviewVisitors,
       submitApprovalAction,
       getSupervisorSharePayload,
       getPreviewSharePayload,
@@ -2276,6 +2290,14 @@ export function createSeguimientoFeature(options = {}) {
         attendanceDialog.showModal();
       } else if (!state.isAttendanceDetailOpen && attendanceDialog.open) {
         attendanceDialog.close();
+      }
+    }
+    const previewVisitorsDialog = currentRoot.querySelector('#preview-visitors-dialog');
+    if (previewVisitorsDialog instanceof HTMLDialogElement) {
+      if (state.previewVisitorsOpen && !previewVisitorsDialog.open) {
+        previewVisitorsDialog.showModal();
+      } else if (!state.previewVisitorsOpen && previewVisitorsDialog.open) {
+        previewVisitorsDialog.close();
       }
     }
   }

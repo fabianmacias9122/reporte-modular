@@ -377,6 +377,14 @@ export function attachSeguimientoController(root, actions) {
         await currentActions.openSupervisorReport(String(button.dataset.id || ''));
         return;
       }
+      if (action === 'open-preview-visitors') {
+        currentActions.openPreviewVisitors();
+        return;
+      }
+      if (action === 'close-preview-visitors') {
+        currentActions.closePreviewVisitors();
+        return;
+      }
       if (action === 'open-control-detail') {
         currentActions.openControlDetail(String(button.dataset.controlKey || ''));
         return;
