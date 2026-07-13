@@ -9,6 +9,7 @@ import {
   setPassword,
   setStoredSession,
 } from './index.js';
+import { buildApiUrl } from '../api/base-url.js';
 import { t } from '../../i18n.js';
 
 function getCellForPerson(catalogs, personId) {
@@ -85,6 +86,27 @@ export function createLoginExperience(options = {}) {
   let pendingResolver = null;
   let lookupRefreshTimer = null;
   let lookupRefreshSeq = 0;
+  let wakeupPromise = null;
+  let wakeupStatus = 'idle';
+
+  function setLookupPending(isPending, message = t('login.lookupPending')) {
+    if (loginCard) {
+      if (isPending) loginCard.setAttribute('data-login-loading', 'true');
+      else loginCard.removeAttribute('data-login-loading');
+    }
+    if (isPending) {
+      setLoginError('');
+      setLoginHelp(message);
+      if (loginButton instanceof HTMLButtonElement) {
+        loginButton.disabled = true;
+        loginButton.textContent = t('login.waiting');
+      }
+      return;
+    }
+    if (loginButton instanceof HTMLButtonElement && !loginCard?.hasAttribute('aria-busy')) {
+      loginButton.textContent = t('login.enter');
+    }
+  }
 
   function setLoginError(message) {
     if (!errorText) return;
@@ -107,6 +129,40 @@ export function createLoginExperience(options = {}) {
       loginButton.disabled = isBusy || !String(getInputValue(usernameInput) || '').trim();
       loginButton.textContent = buttonText;
     }
+  }
+
+  function maybeShowWakeupHelp() {
+    const username = normalizeUsername(getInputValue(usernameInput));
+    if (username || loginAuthMode !== 'none' || loginCard?.hasAttribute('aria-busy')) {
+      return;
+    }
+    if (wakeupStatus === 'pending') {
+      setLoginHelp(t('login.serverWakeup'));
+      return;
+    }
+    if (wakeupStatus === 'ready') {
+      setLoginHelp(t('login.serverReady'));
+    }
+  }
+
+  function warmupBackend() {
+    if (wakeupPromise) return wakeupPromise;
+    wakeupStatus = 'pending';
+    maybeShowWakeupHelp();
+    wakeupPromise = fetch(buildApiUrl('/api/health'), {
+      method: 'GET',
+      cache: 'no-store',
+    })
+      .then(() => {
+        wakeupStatus = 'ready';
+      })
+      .catch(() => {
+        wakeupStatus = 'error';
+      })
+      .finally(() => {
+        maybeShowWakeupHelp();
+      });
+    return wakeupPromise;
   }
 
   async function ensureCatalogsLoaded() {
@@ -158,12 +214,14 @@ export function createLoginExperience(options = {}) {
       loginAuthMode = 'none';
       setVisibility(passwordField, false);
       setVisibility(passwordConfirmField, false);
+      setLookupPending(false);
       setLoginHelp('');
       if (loginButton instanceof HTMLButtonElement) loginButton.disabled = true;
       return;
     }
 
     try {
+      setLookupPending(true);
       const lookupResponse = await lookupAuthUser(username);
       if (refreshSeq !== lookupRefreshSeq) {
         return;
@@ -206,6 +264,10 @@ export function createLoginExperience(options = {}) {
     } catch (_error) {
       setLoginError('No se pudo conectar con el servidor.');
       if (loginButton instanceof HTMLButtonElement) loginButton.disabled = true;
+    } finally {
+      if (refreshSeq === lookupRefreshSeq) {
+        setLookupPending(false);
+      }
     }
   }
 
@@ -263,12 +325,15 @@ export function createLoginExperience(options = {}) {
   async function handleLogin() {
     try {
       setLoginError('');
+      setBusy(true, t('login.signingIn'));
+      setLoginHelp(t('login.signingInHelp'));
       const catalogs = await ensureCatalogsLoaded();
       const loginResult = await resolveLoginResult();
       if (!loginResult) return;
       const user = buildUser(catalogs, loginLookupResult, loginResult);
       setStoredSession(user);
-      setBusy(true, 'Cargando...');
+      setBusy(true, t('login.loadingApp'));
+      setLoginHelp(t('login.loadingAppHelp'));
       if (typeof pendingResolver === 'function') {
         pendingResolver(user);
       }
@@ -351,6 +416,8 @@ export function createLoginExperience(options = {}) {
         }
       });
     });
+    warmupBackend();
+    maybeShowWakeupHelp();
   }
 
   function show() {
@@ -379,6 +446,8 @@ export function createLoginExperience(options = {}) {
       return storedUser;
     }
     show();
+    warmupBackend();
+    maybeShowWakeupHelp();
     return new Promise((resolve) => {
       pendingResolver = resolve;
     });

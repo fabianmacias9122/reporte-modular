@@ -116,7 +116,21 @@ body.app-fixed {
   width: 100%;
   max-width: 380px;
   overflow: hidden;
+  position: relative;
   box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+.login-card[aria-busy="true"]::after,
+.login-card[data-login-loading="true"]::after {
+  content: '';
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: #ff7a00;
+  border-radius: 50%;
+  animation: app-splash-spin 0.9s linear infinite;
 }
 .login-card-head {
   background: #111;
@@ -160,6 +174,7 @@ body.app-fixed {
   color: var(--muted);
   margin: -4px 0 0;
   line-height: 1.35;
+  min-height: 2.2em;
 }
 .login-error {
   font-size: 0.82rem;
