@@ -2386,15 +2386,26 @@ export function createReporteFeature(options = {}) {
         }
       }
 
+      const editingExisting = state.reportId
+        ? (Array.isArray(state.reports) ? state.reports : [])
+          .find((report) => String(report?.id || '') === String(state.reportId || '').trim())
+        : null;
+      const preserveFinalized = Boolean(editingExisting && !isReportEffectivelyDraft(editingExisting));
       const payload = buildReportPayload(state.form, {
-        isDraft: true,
-        lastStage: savedStage,
+        isDraft: !preserveFinalized,
+        lastStage: preserveFinalized ? 'cierre' : savedStage,
       });
+      if (preserveFinalized) {
+        delete payload._draft;
+        delete payload.lastStage;
+      }
       const result = await saveReport(payload, { requestFn: options.requestFn });
-      state.message = `Borrador guardado — etapa ${savedStage}.`;
+      state.message = preserveFinalized
+        ? 'Reporte finalizado actualizado.'
+        : `Borrador guardado — etapa ${savedStage}.`;
       state.isError = false;
-      state.isDraftReport = true;
-      state.lastSavedStage = savedStage;
+      state.isDraftReport = !preserveFinalized;
+      state.lastSavedStage = preserveFinalized ? 'cierre' : savedStage;
       if (result?.id) {
         const savedReportId = String(result.id);
         state.reportId = savedReportId;
