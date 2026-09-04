@@ -60,7 +60,7 @@ import {
   updateBaptism,
   updateVisitor,
   updateKid,
-} from './models/reporte-state.js?v=20260619-reporte-state-1';
+} from './models/reporte-state.js?v=20260904-report-history-q3-fix-1';
 import { renderReporteShell } from './views/reporte-shell.js?v=20260630-i18n-live-switch-2';
 import { t } from '../../i18n.js';
 
