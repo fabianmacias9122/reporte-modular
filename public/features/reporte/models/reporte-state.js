@@ -616,6 +616,20 @@ function getQuarterRange(quarter) {
   return 'Sep-Dic';
 }
 
+function isDateInCurrentQuarter(dateValue = '', referenceDate = new Date()) {
+  const normalized = String(dateValue || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return false;
+
+  const year = Number(normalized.slice(0, 4));
+  const month = Number(normalized.slice(5, 7));
+  if (!year || !month || Number.isNaN(year) || Number.isNaN(month)) return false;
+
+  const currentYear = referenceDate.getFullYear();
+  const currentQuarter = referenceDate.getMonth() <= 3 ? 1 : referenceDate.getMonth() <= 7 ? 2 : 3;
+  const dateQuarter = month <= 4 ? 1 : month <= 8 ? 2 : 3;
+  return year === currentYear && dateQuarter === currentQuarter;
+}
+
 export function buildReportHistoryState(reports = [], currentUser = null, settings = {}) {
   if (currentUser && (currentUser.isAdmin || currentUser.isSupervisor) && !currentUser.assignedCellNumber) {
     return {
@@ -632,7 +646,8 @@ export function buildReportHistoryState(reports = [], currentUser = null, settin
   }
 
   const cycleStartStr = String(settings?.cycle_start_date || '').trim();
-  if (cycleStartStr) {
+  const shouldUseCycleStart = isDateInCurrentQuarter(cycleStartStr);
+  if (shouldUseCycleStart) {
     visibleReports = visibleReports.filter((report) => {
       const reportDate = String(report?.reportDate || report?.formData?.reportDate || '').trim();
       return reportDate && reportDate >= cycleStartStr;
