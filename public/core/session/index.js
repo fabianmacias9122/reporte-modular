@@ -5,7 +5,7 @@ import { fetchReports } from '../../features/reporte/data/reporte.repository.js'
 import { getQuarterWeekNumber } from '../../features/reporte/models/reporte-state.js';
 import { applyStaticTranslations, getCurrentLang, setLang, t } from '../../i18n.js';
 
-const FEATURE_MODULE_VERSION = 'v=20260904-report-finalized-save-fix-1';
+const FEATURE_MODULE_VERSION = 'v=20260907-report-quarter-reopen-fix-1';
 
 const appState = {
   rootSelector: '#app-root',

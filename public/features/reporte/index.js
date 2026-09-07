@@ -603,10 +603,60 @@ export function createReporteFeature(options = {}) {
     return Number.isFinite(parsed) ? parsed : NaN;
   }
 
+  function getQuarterFromDateValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return 0;
+
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const month = Number(isoMatch[2]);
+      if (!month || Number.isNaN(month)) return 0;
+      if (month <= 4) return 1;
+      if (month <= 8) return 2;
+      return 3;
+    }
+
+    const timestamp = parseReportDateValue(raw);
+    if (!Number.isFinite(timestamp)) return 0;
+    const parsedDate = new Date(timestamp);
+    const month = parsedDate.getMonth() + 1;
+    if (month <= 4) return 1;
+    if (month <= 8) return 2;
+    return 3;
+  }
+
+  function getYearFromDateValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return 0;
+
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      return Number(isoMatch[1]) || 0;
+    }
+
+    const timestamp = parseReportDateValue(raw);
+    if (!Number.isFinite(timestamp)) return 0;
+    return new Date(timestamp).getFullYear();
+  }
+
+  function isDateInCurrentQuarter(value, referenceDate = new Date()) {
+    const year = getYearFromDateValue(value);
+    const quarter = getQuarterFromDateValue(value);
+    if (!year || !quarter) return false;
+
+    const currentYear = referenceDate.getFullYear();
+    const currentQuarter = referenceDate.getMonth() <= 3 ? 1 : referenceDate.getMonth() <= 7 ? 2 : 3;
+    return year === currentYear && quarter === currentQuarter;
+  }
+
   function isReportEffectivelyDraft(report) {
     const formData = report?.formData || report || {};
     if (isDraftFormData(formData)) return true;
     return !hasMeaningfulReportData(report);
+  }
+
+  function getReportDate(report) {
+    return String(report?.reportDate || report?.report_date || report?.formData?.reportDate || '').trim();
   }
 
   function findExistingReportForCellWeek(cellNumber = '', week = '') {
@@ -620,23 +670,7 @@ export function createReporteFeature(options = {}) {
         return false;
       }
 
-      const cycleStart = String(state.settings?.cycle_start_date || '').trim();
-      if (!cycleStart) {
-        return true;
-      }
-
-      const cycleStartTimestamp = parseReportDateValue(cycleStart);
-      if (!Number.isFinite(cycleStartTimestamp)) {
-        return true;
-      }
-
-      const reportDate = String(report?.reportDate || report?.report_date || report?.formData?.reportDate || '').trim();
-      const reportTimestamp = parseReportDateValue(reportDate);
-      if (!Number.isFinite(reportTimestamp)) {
-        return true;
-      }
-
-      return reportTimestamp >= cycleStartTimestamp;
+      return reportBelongsToActiveCycle(report);
     });
     if (!matches.length) return null;
     matches.sort((left, right) => {
@@ -772,14 +806,19 @@ export function createReporteFeature(options = {}) {
   }
 
   function reportBelongsToActiveCycle(report) {
+    const reportDate = getReportDate(report);
+    if (!reportDate) return true;
+
     const cycleStart = String(state.settings?.cycle_start_date || '').trim();
-    if (!cycleStart) return true;
-    const cycleStartTimestamp = parseReportDateValue(cycleStart);
-    if (!Number.isFinite(cycleStartTimestamp)) return true;
-    const reportDate = String(report?.reportDate || report?.report_date || report?.formData?.reportDate || '').trim();
-    const reportTimestamp = parseReportDateValue(reportDate);
-    if (!Number.isFinite(reportTimestamp)) return true;
-    return reportTimestamp >= cycleStartTimestamp;
+    const shouldUseCycleStart = cycleStart && isDateInCurrentQuarter(cycleStart);
+    if (shouldUseCycleStart) {
+      const cycleStartTimestamp = parseReportDateValue(cycleStart);
+      const reportTimestamp = parseReportDateValue(reportDate);
+      if (!Number.isFinite(cycleStartTimestamp) || !Number.isFinite(reportTimestamp)) return true;
+      return reportTimestamp >= cycleStartTimestamp;
+    }
+
+    return isDateInCurrentQuarter(reportDate);
   }
 
   function getBootstrapSelection(cellNumber, week) {
